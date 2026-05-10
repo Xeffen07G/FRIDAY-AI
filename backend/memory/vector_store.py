@@ -7,16 +7,38 @@ logger = logging.getLogger("friday.memory.vector_store")
 class VectorStore:
     def __init__(self):
         self.db_path = os.path.join(os.path.dirname(__file__), "chroma_db")
-        try:
-            self.client = chromadb.PersistentClient(path=self.db_path)
-            self.collection = self.client.get_or_create_collection(
-                name="friday_memories",
-                metadata={"hnsw:space": "cosine"}
-            )
-            logger.info(f"ChromaDB initialized at {self.db_path}")
-        except Exception as e:
-            logger.error(f"Failed to initialize ChromaDB: {e}", exc_info=True)
-            self.collection = None
+        self._client = None
+        self._collection = None
+        logger.info(f"VectorStore initialized with path: {self.db_path} (Lazy loading enabled)")
+
+    @property
+    def client(self):
+        if self._client is None:
+            try:
+                logger.info("Initializing ChromaDB PersistentClient...")
+                self._client = chromadb.PersistentClient(path=self.db_path)
+                logger.info("ChromaDB PersistentClient successfully initialized.")
+            except Exception as e:
+                logger.error(f"Failed to initialize ChromaDB PersistentClient: {e}", exc_info=True)
+                return None
+        return self._client
+
+    @property
+    def collection(self):
+        if self._collection is None:
+            client = self.client
+            if client:
+                try:
+                    logger.info("Loading or creating ChromaDB collection 'friday_memories'...")
+                    self._collection = client.get_or_create_collection(
+                        name="friday_memories",
+                        metadata={"hnsw:space": "cosine"}
+                    )
+                    logger.info("ChromaDB collection 'friday_memories' is active.")
+                except Exception as e:
+                    logger.error(f"Failed to get or create ChromaDB collection: {e}", exc_info=True)
+                    return None
+        return self._collection
 
     def add_memory(self, memory_id: str, text: str, embedding: list, metadata: dict):
         if not self.collection:

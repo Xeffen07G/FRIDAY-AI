@@ -163,23 +163,46 @@ export function useChat() {
       let isFirstChunk = true;
       let done = false;
 
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-        done = readerDone;
-        if (value) {
-          const chunk = decoder.decode(value, { stream: true });
-          
-          if (isFirstChunk) {
-            setMessages((prev) => [...prev, { id: botMsgId, sender: 'friday', text: chunk }]);
-            isFirstChunk = false;
-          } else {
-            setMessages((prev) => 
-              prev.map(msg => 
-                msg.id === botMsgId ? { ...msg, text: msg.text + chunk } : msg
-              )
-            );
+      // Watchdog timer to prevent frontend hang if backend dies without closing
+      let streamTimeout;
+      const resetStreamTimeout = () => {
+        clearTimeout(streamTimeout);
+        streamTimeout = setTimeout(() => {
+          console.error("Stream reader timeout - no chunks received for 15s");
+          setMessages((prev) => 
+            prev.map(msg => 
+              msg.id === botMsgId ? { ...msg, text: msg.text + "\n\n⚠️ Stream connection lost." } : msg
+            )
+          );
+          setIsLoading(false);
+        }, 15000);
+      };
+
+      try {
+        resetStreamTimeout();
+        while (!done) {
+          const { value, done: readerDone } = await reader.read();
+          done = readerDone;
+          resetStreamTimeout();
+          if (value) {
+            const chunk = decoder.decode(value, { stream: true });
+            
+            if (isFirstChunk) {
+              setMessages((prev) => [...prev, { id: botMsgId, sender: 'friday', text: chunk }]);
+              isFirstChunk = false;
+            } else {
+              setMessages((prev) => 
+                prev.map(msg => 
+                  msg.id === botMsgId ? { ...msg, text: msg.text + chunk } : msg
+                )
+              );
+            }
           }
         }
+        clearTimeout(streamTimeout);
+      } catch (streamErr) {
+        clearTimeout(streamTimeout);
+        throw streamErr;
       }
 
       // Update session title locally if it was the first message

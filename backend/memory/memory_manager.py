@@ -10,7 +10,12 @@ class MemoryManager:
     """Manages semantic memory extraction, storage, and context retrieval."""
 
     def __init__(self):
-        pass
+        logger.info("MemoryManager initialized.")
+        
+    @property
+    def collection(self):
+        """Exposes the vector collection for status checks and external tools."""
+        return vector_store.collection
 
     def extract_and_store_memory(self, text: str, role: str, session_id: str):
         """Extracts meaning and stores memory if valid."""
