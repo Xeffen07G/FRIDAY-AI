@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 
 export function useChat() {
   const [sessions, setSessions] = useState([]);
+  const [semanticMemories, setSemanticMemories] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState(() => localStorage.getItem('friday_session_id') || null);
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -115,6 +116,25 @@ export function useChat() {
     }
   };
 
+  const fetchSemanticMemories = async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/memories');
+      const data = await res.json();
+      setSemanticMemories(data);
+    } catch (err) {
+      console.error("Failed to fetch memories", err);
+    }
+  };
+
+  const deleteSemanticMemory = async (id) => {
+    try {
+      await fetch(`http://127.0.0.1:8000/api/memories/${id}`, { method: 'DELETE' });
+      setSemanticMemories(prev => prev.filter(m => m.id !== id));
+    } catch (err) {
+      console.error("Failed to delete memory", err);
+    }
+  };
+
   const sendMessage = async (text) => {
     if (!text.trim() || isLoading || !currentSessionId) return;
     
@@ -189,6 +209,9 @@ export function useChat() {
     createNewSession,
     switchSession,
     deleteSession,
+    semanticMemories,
+    fetchSemanticMemories,
+    deleteSemanticMemory,
     messages,
     isLoading,
     error,

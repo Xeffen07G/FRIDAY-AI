@@ -1,7 +1,7 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routes import chat, sessions
+from backend.routes import chat, sessions, memories
 from backend.config.settings import settings
 
 # Configure logging
@@ -30,6 +30,7 @@ app.add_middleware(
 # Register our routes
 app.include_router(chat.router, prefix="/api")
 app.include_router(sessions.router, prefix="/api/sessions")
+app.include_router(memories.router, prefix="/api/memories")
 
 @app.get("/health")
 def health_check():

@@ -2,6 +2,7 @@ import logging
 from backend.llm.ollama_client import LLMClient
 from backend.orchestrator.prompt_manager import PromptManager
 from backend.memory.database import save_message, get_messages, update_session_title
+from backend.memory.memory_manager import memory_manager
 
 logger = logging.getLogger("friday.orchestrator")
 
@@ -23,6 +24,8 @@ class Orchestrator:
         
         # Step 1: Save user message and fetch past context
         save_message(session_id, "user", user_input)
+        memory_manager.extract_and_store_memory(user_input, "user", session_id)
+        
         past_msgs = get_messages(session_id)
         
         if len(past_msgs) <= 1:
@@ -33,6 +36,12 @@ class Orchestrator:
             sender = "F.R.I.D.A.Y." if msg["sender"] == "friday" else "User"
             context_lines.append(f"{sender}: {msg['text']}")
         memory_context = "\n".join(context_lines) if context_lines else ""
+        
+        # Inject long-term semantic context
+        semantic_memories = memory_manager.get_relevant_context(user_input, limit=3)
+        if semantic_memories:
+            logger.info("Injecting semantic memories into prompt.")
+            memory_context += "\n\n--- RELEVANT PAST KNOWLEDGE ---\n" + semantic_memories
         
         system_prompt = PromptManager.get_system_prompt()
         formatted_user_prompt = PromptManager.format_user_prompt(user_input, memory_context)
@@ -45,5 +54,6 @@ class Orchestrator:
             
         if full_response:
             save_message(session_id, "friday", full_response)
+            memory_manager.extract_and_store_memory(full_response, "friday", session_id)
         
         logger.info("Orchestrator finished streaming response from LLM.")
