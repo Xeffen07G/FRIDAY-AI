@@ -1,5 +1,6 @@
 import time
 import uuid
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -11,14 +12,27 @@ from backend.routes.voice import router as voice_router
 from backend.routes.vision import router as vision_router
 from backend.config.settings import settings
 from backend.core.logger import setup_logging
+from backend.core.validator import validator
 
 # Configure logging
 logger = setup_logging()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info(f"F.R.I.D.A.Y. {settings.VERSION} initializing...")
+    valid = await validator.validate_all()
+    if not valid:
+        logger.critical("Startup validation FAILED. System may be unstable.")
+    yield
+    # Shutdown
+    logger.info("F.R.I.D.A.Y. Core shutting down.")
+
 app = FastAPI(
     title=settings.APP_NAME,
     description="Production-hardened Local AI Assistant Core",
-    version=settings.VERSION
+    version=settings.VERSION,
+    lifespan=lifespan
 )
 
 # Exception Middleware
@@ -53,10 +67,10 @@ app.add_middleware(
 )
 
 # Register routes
-app.include_router(chat_router, prefix="/api", tags=["chat"])
+app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(sessions_router, prefix="/api/sessions", tags=["sessions"])
-app.include_router(memories_router, prefix="/api", tags=["memories"])
-app.include_router(health_router, prefix="/api", tags=["health"])
+app.include_router(memories_router, prefix="/api/memories", tags=["memories"])
+app.include_router(health_router, prefix="/api/health", tags=["health"])
 app.include_router(voice_router, prefix="/api/voice", tags=["voice"])
 app.include_router(vision_router, prefix="/api/vision", tags=["vision"])
 

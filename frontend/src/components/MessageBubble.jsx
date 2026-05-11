@@ -1,9 +1,10 @@
+import { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
-export default function MessageBubble({ message }) {
+function MessageBubble({ message }) {
   const isUser = message.sender === 'user';
   
   return (
@@ -78,13 +79,12 @@ export default function MessageBubble({ message }) {
           </ReactMarkdown>
         )}
         
-        {/* Metadata Footer for Assistant */}
         {!isUser && message.text && (
           <div className="mt-4 pt-3 border-t border-slate-700/50 flex items-center justify-between text-[10px] text-slate-500 font-mono select-none">
             <div className="flex items-center gap-2">
               <span className="flex items-center gap-1.5 font-medium text-slate-400">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/80 shadow-[0_0_4px_#10b981]"></div>
-                Qwen2.5:3b
+                phi3:mini
               </span>
               <span className="text-slate-600">•</span>
               <span>~{Math.max(1, Math.ceil(message.text.length / 4))} tkns</span>
@@ -105,3 +105,5 @@ export default function MessageBubble({ message }) {
     </div>
   );
 }
+
+export default memo(MessageBubble);

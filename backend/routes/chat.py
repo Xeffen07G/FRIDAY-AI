@@ -14,7 +14,7 @@ class ChatRequest(BaseModel):
     session_id: str
     message: str
 
-@router.post("/chat")
+@router.post("/")
 async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
     """
     Receives a message, sends it to the orchestrator, and returns the response stream.

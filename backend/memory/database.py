@@ -1,8 +1,23 @@
+import shutil
+import os
 import sqlite3
 import uuid
 from datetime import datetime
+from backend.core.logger import get_logger
+
+logger = get_logger("memory.database")
 
 DB_PATH = "friday_memory.db"
+BACKUP_PATH = "friday_memory.db.bak"
+
+def backup_database():
+    """Creates a backup snapshot of the database."""
+    if os.path.exists(DB_PATH):
+        try:
+            shutil.copy2(DB_PATH, BACKUP_PATH)
+            logger.info("Database backup created successfully.")
+        except Exception as e:
+            logger.error(f"Database backup failed: {e}")
 
 def get_connection():
     """Returns a new SQLite connection."""

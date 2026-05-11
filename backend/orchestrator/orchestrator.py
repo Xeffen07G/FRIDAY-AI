@@ -8,24 +8,38 @@ from backend.memory.memory_manager import memory_manager
 from backend.tools.tool_orchestrator import tool_orchestrator
 from backend.config.settings import settings
 from backend.core.logger import get_logger
+from backend.core.task_manager import task_manager
+from backend.core.model_manager import model_manager
 
 logger = get_logger("orchestrator")
 
 class Orchestrator:
     """Production-grade orchestrator with concurrency control and performance metrics."""
     
-    # Session locks to prevent concurrent prompts for the same user
     _locks = {}
+    _last_access = {}
 
     def __init__(self):
         self.llm = LLMClient()
     
+    async def _cleanup_locks(self):
+        """Prunes inactive session locks to prevent memory leaks."""
+        now = time.time()
+        to_delete = [sid for sid, last in self._last_access.items() if now - last > 3600]
+        for sid in to_delete:
+            self._locks.pop(sid, None)
+            self._last_access.pop(sid, None)
+
     async def process_stream(self, session_id: str, user_input: str, request_id: str, background_tasks=None):
         """Unified streaming pipeline with per-session locking and async execution."""
         
         # 0. Acquire Lock
         if session_id not in self._locks:
             self._locks[session_id] = asyncio.Lock()
+        self._last_access[session_id] = time.time()
+
+        if len(self._locks) > 100:
+            asyncio.create_task(self._cleanup_locks())
         
         if self._locks[session_id].locked():
             logger.warning(f"[REQ:{request_id}] Session {session_id} is busy.")
@@ -37,66 +51,82 @@ class Orchestrator:
             metrics = {"request_id": request_id}
             
             try:
-                # 1. State Setup (Sync DB call is fast, but we keep it for now)
-                save_message(session_id, "user", user_input)
+                # 1. Model Health Check
+                if not await model_manager.ensure_model(settings.MODEL_NAME):
+                    logger.warning(f"[REQ:{request_id}] Model {settings.MODEL_NAME} might not be loaded. Triggering check.")
+
+                # 2. State Setup (Save user msg early)
+                await task_manager.run_task(f"save_user_msg_{request_id}", asyncio.to_thread(save_message, session_id, "user", user_input))
                 
-                # 2. Intent Classification
+                # 3. Intent Classification
                 intent_start = time.time()
                 intent = tool_orchestrator.get_intent(user_input)
                 metrics["intent_ms"] = int((time.time() - intent_start) * 1000)
                 
-                # 3. Context Retrieval
+                # 4. Context Retrieval (Lightweight Mode Check)
                 yield "[[STATUS:Searching memory...]]"
                 retrieval_start = time.time()
-                past_msgs = get_messages(session_id)
+                past_msgs = await asyncio.to_thread(get_messages, session_id)
                 
-                # Context window size from settings
+                # Dynamic context window based on RAM
                 window_size = settings.CONTEXT_WINDOW_SIZE
+                retrieval_limit = 3
+                
+                if model_manager.is_ram_under_pressure():
+                    logger.warning(f"[REQ:{request_id}] RAM pressure detected. Scaling down context.")
+                    window_size = max(4, window_size // 2)
+                    retrieval_limit = 1
+                    yield "[[STATUS:Lightweight mode active...]]"
+                
                 recent_context = "\n".join([f"{'Assistant' if m['sender']=='friday' else 'User'}: {m['text']}" for m in past_msgs[-window_size:]])
                 
-                semantic_context = memory_manager.get_relevant_context(user_input)
+                semantic_context = await memory_manager.get_relevant_context(user_input, limit=retrieval_limit)
                 combined_context = f"{recent_context}\n{semantic_context}".strip()
                 metrics["retrieval_ms"] = int((time.time() - retrieval_start) * 1000)
                 
-                # 4. Tool Execution
+                # 5. Tool Execution
                 tool_results = None
                 if intent in ["tool_execution", "routing_needed"]:
                     yield "[[STATUS:Checking tools...]]"
                     tool_start = time.time()
-                    # Await the async tool check
                     tool_results = await tool_orchestrator.check_and_execute_tools(user_input, request_id)
                     metrics["tool_ms"] = int((time.time() - tool_start) * 1000)
                     if tool_results:
                         combined_context += f"\n\n[TOOL_RESULT]\n{tool_results}"
                         yield f"🤖 *Executing system tool...*\n\n"
 
-                # 5. Generation Setup
+                # 6. Generation Setup
                 yield "[[STATUS:Thinking...]]"
                 system_prompt = PromptManager.get_system_prompt(intent)
                 final_prompt = PromptManager.format_user_prompt(user_input, combined_context)
                 
-                # Dynamic options
                 options = {"temperature": 0.6, "num_predict": 256}
                 if intent == "memory_save":
                     options["temperature"] = 0.3
                 
-                # 6. Token Streaming
+                # 7. Token Streaming
                 llm_start = time.time()
                 full_response = ""
-                # Await the async generator
                 async for token in self.llm.generate_stream(final_prompt, system_prompt, request_id, options):
                     full_response += token
                     yield token
                 
                 metrics["generation_ms"] = int((time.time() - llm_start) * 1000)
                 
-                # 7. Post-Processing (Background)
-                if background_tasks:
-                    background_tasks.add_task(save_message, session_id, "friday", full_response)
-                    background_tasks.add_task(memory_manager.extract_and_store_memory, user_input, "user", session_id)
-                    background_tasks.add_task(memory_manager.extract_and_store_memory, full_response, "friday", session_id)
-                    if len(past_msgs) <= 1:
-                        background_tasks.add_task(update_session_title, session_id, user_input[:30])
+                # 8. Post-Processing (Background)
+                # Using task_manager for robust background execution
+                await task_manager.run_task(f"save_friday_msg_{request_id}", asyncio.to_thread(save_message, session_id, "friday", full_response))
+                await task_manager.run_task(f"store_user_mem_{request_id}", memory_manager.extract_and_store_memory(user_input, "user", session_id))
+                await task_manager.run_task(f"store_friday_mem_{request_id}", memory_manager.extract_and_store_memory(full_response, "friday", session_id))
+                
+                if len(past_msgs) > 0 and (len(past_msgs) + 1) % 10 == 0:
+                    logger.info(f"[REQ:{request_id}] Triggering background session summarization.")
+                    # Pass the messages properly
+                    current_msgs = past_msgs + [{"sender": "user", "text": user_input}, {"sender": "friday", "text": full_response}]
+                    await task_manager.run_task(f"summarize_{session_id}", memory_manager.summarize_session(session_id, current_msgs))
+                
+                if len(past_msgs) <= 1:
+                    await task_manager.run_task(f"update_title_{session_id}", asyncio.to_thread(update_session_title, session_id, user_input[:30]))
 
                 metrics["total_ms"] = int((time.time() - start_time) * 1000)
                 logger.info(f"[REQ:{request_id}] Completed in {metrics['total_ms']}ms. Intent: {intent}")
@@ -106,5 +136,4 @@ class Orchestrator:
                 logger.error(f"[REQ:{request_id}] Orchestration crash: {e}", exc_info=True)
                 yield f"\n\n❌ **Orchestrator Error:** {str(e)}"
 
-# Singleton for reuse
 friday_orchestrator = Orchestrator()
