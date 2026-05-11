@@ -1,11 +1,13 @@
 import requests
 import logging
+import json
+import time
 from backend.config.settings import settings
 
 logger = logging.getLogger("friday.llm")
 
 class LLMClient:
-    """Handles communication with the local Ollama instance with robust error handling."""
+    """Handles communication with the local Ollama instance with robust error handling and speed optimizations."""
     def __init__(self):
         self.model = settings.MODEL_NAME
         self.base_url = settings.OLLAMA_BASE_URL
@@ -19,7 +21,11 @@ class LLMClient:
                 "model": self.model,
                 "prompt": prompt,
                 "stream": False,
-                "format": "json"
+                "format": "json",
+                "options": {
+                    "temperature": 0.0,
+                    "num_predict": 128 # Routing should be short
+                }
             }
             if system:
                 payload["system"] = system
@@ -41,46 +47,51 @@ class LLMClient:
             logger.error(f"[REQ:{request_id}] Error in JSON generation: {e}")
             return "{}"
 
-    def generate_stream(self, prompt: str, system: str = None, request_id: str = "UNKNOWN"):
-        """Sends a prompt to Ollama and streams the response back token by token."""
+    def generate_stream(self, prompt: str, system: str = None, request_id: str = "UNKNOWN", options: dict = None):
+        """
+        Sends a prompt to Ollama and streams the response back token by token.
+        Supports dynamic generation options for latency optimization.
+        """
         try:
             logger.info(f"[REQ:{request_id}] Sending stream request to Ollama ({self.model})...")
             
+            # Default optimized options for local inference
+            final_options = {
+                "temperature": 0.7,
+                "num_predict": 512,
+                "stop": ["User:", "Assistant:"]
+            }
+            if options:
+                final_options.update(options)
+                
             payload = {
                 "model": self.model,
                 "prompt": prompt,
-                "stream": True
+                "stream": True,
+                "options": final_options
             }
             if system:
                 payload["system"] = system
                 
+            first_token_time = None
+            start_time = time.time()
+            
             with requests.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
                 stream=True,
-                timeout=30 # Prevent hanging forever
+                timeout=30
             ) as response:
             
-                # Handle standard successful response
                 if response.status_code == 200:
-                    import json
                     for line in response.iter_lines():
                         if line:
                             data = json.loads(line)
                             if "response" in data:
+                                if first_token_time is None:
+                                    first_token_time = time.time() - start_time
+                                    logger.info(f"[REQ:{request_id}] First token in {first_token_time*1000:.1f}ms")
                                 yield data["response"]
-                    return
-                    
-                # Handle specific Ollama errors
-                elif response.status_code == 404:
-                    error_msg = f"Model '{self.model}' not found in Ollama."
-                    logger.error(f"[REQ:{request_id}] {error_msg}")
-                    yield error_msg
-                    return
-                    
-                elif response.status_code == 400:
-                    logger.error(f"[REQ:{request_id}] Invalid request to Ollama: {response.text}")
-                    yield "Error: Invalid request format sent to LLM."
                     return
                     
                 else:
@@ -89,12 +100,8 @@ class LLMClient:
                     return
                 
         except requests.exceptions.ConnectionError:
-            logger.error(f"[REQ:{request_id}] Failed to connect to Ollama at {self.base_url}")
-            yield "Connection Error: Could not reach Ollama. Is the Ollama app running?"
-            
-        except requests.exceptions.Timeout:
-            logger.error(f"[REQ:{request_id}] Ollama request timed out.")
-            yield "Timeout Error: Ollama took too long to respond."
+            logger.error(f"[REQ:{request_id}] Failed to connect to Ollama")
+            yield "Connection Error: Could not reach Ollama."
             
         except Exception as e:
             logger.exception(f"[REQ:{request_id}] Unexpected error in LLMClient stream.")

@@ -25,7 +25,6 @@ class MemoryManager:
         try:
             embedding = embedding_service.get_embedding(text)
             if not embedding:
-                logger.warning("Embedding generation failed, falling back to skipping memory storage.")
                 return False
 
             memory_id = str(uuid.uuid4())
@@ -48,18 +47,17 @@ class MemoryManager:
                 "pinned": False
             }
 
-            success = vector_store.add_memory(memory_id, text, embedding, metadata)
-            if success:
-                logger.info(f"Stored semantic memory {memory_id} (Category: {category})")
-            return success
+            return vector_store.add_memory(memory_id, text, embedding, metadata)
         except Exception as e:
-            logger.error(f"Failed in memory storage pipeline: {e}")
+            logger.error(f"Failed in memory storage: {e}")
             return False
 
-    def get_relevant_context(self, query: str, limit: int = 3):
-        """Retrieves and ranks relevant memories based on similarity and recency."""
-        # Optimization: Only search memory if prompt suggests recall
-        trigger_keywords = ["remember", "recall", "earlier", "know about", "my", "preferences", "past", "history", "previous"]
+    def get_relevant_context(self, query: str, limit: int = 3, threshold: float = 0.5):
+        """
+        Retrieves relevant memories. 
+        Filters by threshold to prevent irrelevant hallucinations.
+        """
+        trigger_keywords = ["remember", "recall", "earlier", "know about", "my", "preferences", "past", "history", "previous", "what", "who", "where", "tell me"]
         if not any(word in query.lower() for word in trigger_keywords):
             return ""
 
@@ -69,25 +67,28 @@ class MemoryManager:
             if not embedding:
                 return ""
 
-            raw_results = vector_store.search_memories(embedding, n_results=limit)
+            raw_results = vector_store.search_memories(embedding, n_results=limit * 2)
             if not raw_results:
                 return ""
             
-            retrieval_ms = (datetime.now() - start_time).total_seconds() * 1000
-            logger.debug(f"Memory retrieval completed in {retrieval_ms:.2f}ms")
+            # Distance filtering: cosine distance < 0.5 is usually good
+            filtered_results = [m for m in raw_results if m.get("distance", 1.0) < threshold]
+            
+            if not filtered_results:
+                logger.debug(f"No memories passed threshold {threshold}")
+                return ""
 
             now = datetime.now()
             ranked_results = []
-            for mem in raw_results:
+            for mem in filtered_results:
                 try:
                     created_at = datetime.fromisoformat(mem["metadata"]["created_at"])
                     days_old = (now - created_at).days
-                    time_penalty = min(0.3, days_old * 0.01)
+                    time_penalty = min(0.2, days_old * 0.005)
                 except:
                     time_penalty = 0
 
-                pinned_boost = -0.2 if mem["metadata"].get("pinned") else 0
-                
+                pinned_boost = -0.15 if mem["metadata"].get("pinned") else 0
                 final_score = mem["distance"] + time_penalty + pinned_boost
                 ranked_results.append((final_score, mem))
 
@@ -98,12 +99,18 @@ class MemoryManager:
             for mem in top_memories:
                 date_str = mem["metadata"].get("created_at", "")[:10]
                 role = "User" if mem["metadata"].get("role") == "user" else "F.R.I.D.A.Y."
-                context_strings.append(f"[{date_str}] {role}: {mem['text']}")
+                # Added confidence indicator for LLM
+                confidence = "HIGH" if mem["distance"] < 0.3 else "MEDIUM"
+                context_strings.append(f"[Fact (Confidence: {confidence}) - {date_str}] {role}: {mem['text']}")
                 
             return "\n".join(context_strings)
             
         except Exception as e:
-            logger.error(f"Failed in memory retrieval pipeline: {e}")
+            logger.error(f"Failed in memory retrieval: {e}")
             return ""
+
+    def delete_session_memories(self, session_id: str):
+        """Not yet implemented in vector store natively but can be filtered."""
+        pass
 
 memory_manager = MemoryManager()
