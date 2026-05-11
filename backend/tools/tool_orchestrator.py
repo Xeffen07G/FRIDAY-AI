@@ -15,6 +15,11 @@ class ToolOrchestrator:
             r"^(hello|hi|hey|greetings|morning|afternoon|evening|how are you|who are you|what are you|thanks|thank you|bye|goodbye|cool|nice|okay|ok|help|info)$", 
             re.IGNORECASE
         )
+        # Memory save triggers
+        self.memory_save_patterns = re.compile(
+            r"(remember|favourite|favorite|i love|i like|i am learning|i work at|my name is|i prefer|my goal is|i want to learn)",
+            re.IGNORECASE
+        )
 
     def get_intent(self, prompt: str) -> str:
         """Lightweight intent classification using regex and keyword mapping."""
@@ -24,13 +29,12 @@ class ToolOrchestrator:
         if self.conversation_patterns.match(clean_prompt) or len(clean_prompt.split()) < 3:
             return "conversational"
         
-        # 2. Memory/Conversational patterns (Skip LLM Routing for these)
-        # If it's a question about "me" or "my" but doesn't mention specific tool actions, bypass tools
-        personal_query = any(word in clean_prompt for word in ["what", "who", "where", "my", "me", "remember", "recall"])
-        has_tool_keyword = any(word in clean_prompt for word in ["calc", "run", "file", "mkdir", "command", "system", "cpu", "usage"])
-        
-        if personal_query and not has_tool_keyword:
-            return "conversational" # Let memory retrieval handle it without routing
+        # 2. Memory Save Intent (New)
+        if self.memory_save_patterns.search(clean_prompt):
+            # Check if it's a question or a statement
+            if clean_prompt.startswith(("what", "who", "where", "how")):
+                return "conversational" # It's a query, not a save
+            return "memory_save"
         
         # 3. Tool-specific keywords (Direct Routing Hint)
         tool_keywords = {
@@ -49,20 +53,15 @@ class ToolOrchestrator:
 
     def check_and_execute_tools(self, user_prompt: str, request_id: str = "UNKNOWN") -> str:
         """
-        Quickly decides if a tool is needed. Bypasses LLM routing for greetings.
-        Includes a 2.0s hard cap on decision logic.
+        Quickly decides if a tool is needed. 
+        Supports strict 2.0s hard cap.
         """
         start_time = time.time()
-        
-        # Step 1: Lightweight Intent Classification (Bypass)
         intent = self.get_intent(user_prompt)
-        intent_duration = time.time() - start_time
-        logger.info(f"[REQ:{request_id}] Intent classification: {intent} ({intent_duration*1000:.1f}ms)")
         
-        if intent == "conversational":
+        if intent in ["conversational", "memory_save"]:
             return None
 
-        # Step 2: LLM Routing with 2.0s Hard Cap
         schemas = tool_registry.get_all_tools_schema()
         system_prompt = f"""You are a tool router. Available: {json.dumps(schemas)}
 Rules: 
@@ -71,7 +70,6 @@ Rules:
         
         try:
             logger.info(f"[REQ:{request_id}] Calling LLM for tool routing (2s cap).")
-            # PASSING 2s TIMEOUT TO LLM CLIENT
             response = self.llm.generate_json(user_prompt, system=system_prompt, request_id=request_id, timeout=2)
             
             if not response or not response.strip() or response == "{}":
@@ -87,7 +85,7 @@ Rules:
                 return f"--- TOOL EXECUTION RESULTS ---\nTool: {tool_name}\nResult: {str(result)}\n-----------------------------"
                 
         except Exception as e:
-            logger.error(f"[REQ:{request_id}] Tool routing error/timeout: {e}")
+            logger.error(f"[REQ:{request_id}] Tool routing error: {e}")
             
         return None
 
