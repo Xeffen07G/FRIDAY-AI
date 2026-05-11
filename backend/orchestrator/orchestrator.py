@@ -1,15 +1,15 @@
-import logging
-import time
 import json
 import asyncio
+import time
 from backend.llm.ollama_client import LLMClient
 from backend.orchestrator.prompt_manager import PromptManager
 from backend.memory.database import save_message, get_messages, update_session_title
 from backend.memory.memory_manager import memory_manager
 from backend.tools.tool_orchestrator import tool_orchestrator
 from backend.config.settings import settings
+from backend.core.logger import get_logger
 
-logger = logging.getLogger("friday.orchestrator")
+logger = get_logger("orchestrator")
 
 class Orchestrator:
     """Production-grade orchestrator with concurrency control and performance metrics."""
@@ -21,13 +21,14 @@ class Orchestrator:
         self.llm = LLMClient()
     
     async def process_stream(self, session_id: str, user_input: str, request_id: str, background_tasks=None):
-        """Unified streaming pipeline with per-session locking."""
+        """Unified streaming pipeline with per-session locking and async execution."""
         
         # 0. Acquire Lock
         if session_id not in self._locks:
             self._locks[session_id] = asyncio.Lock()
         
         if self._locks[session_id].locked():
+            logger.warning(f"[REQ:{request_id}] Session {session_id} is busy.")
             yield "⚠️ **System Busy:** Please wait for my previous response to finish."
             return
 
@@ -36,7 +37,7 @@ class Orchestrator:
             metrics = {"request_id": request_id}
             
             try:
-                # 1. State Setup
+                # 1. State Setup (Sync DB call is fast, but we keep it for now)
                 save_message(session_id, "user", user_input)
                 
                 # 2. Intent Classification
@@ -62,7 +63,8 @@ class Orchestrator:
                 if intent in ["tool_execution", "routing_needed"]:
                     yield "[[STATUS:Checking tools...]]"
                     tool_start = time.time()
-                    tool_results = tool_orchestrator.check_and_execute_tools(user_input, request_id)
+                    # Await the async tool check
+                    tool_results = await tool_orchestrator.check_and_execute_tools(user_input, request_id)
                     metrics["tool_ms"] = int((time.time() - tool_start) * 1000)
                     if tool_results:
                         combined_context += f"\n\n[TOOL_RESULT]\n{tool_results}"
@@ -81,8 +83,8 @@ class Orchestrator:
                 # 6. Token Streaming
                 llm_start = time.time()
                 full_response = ""
-                # generate_stream is a generator, so we iterate
-                for token in self.llm.generate_stream(final_prompt, system_prompt, request_id, options):
+                # Await the async generator
+                async for token in self.llm.generate_stream(final_prompt, system_prompt, request_id, options):
                     full_response += token
                     yield token
                 
@@ -97,8 +99,12 @@ class Orchestrator:
                         background_tasks.add_task(update_session_title, session_id, user_input[:30])
 
                 metrics["total_ms"] = int((time.time() - start_time) * 1000)
+                logger.info(f"[REQ:{request_id}] Completed in {metrics['total_ms']}ms. Intent: {intent}")
                 yield f"\n\n[[METRICS:{json.dumps(metrics)}]]"
                 
             except Exception as e:
                 logger.error(f"[REQ:{request_id}] Orchestration crash: {e}", exc_info=True)
                 yield f"\n\n❌ **Orchestrator Error:** {str(e)}"
+
+# Singleton for reuse
+friday_orchestrator = Orchestrator()

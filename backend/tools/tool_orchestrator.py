@@ -1,11 +1,12 @@
 import json
-import logging
+import asyncio
 import time
 import re
 from backend.tools.tool_registry import tool_registry
 from backend.llm.ollama_client import LLMClient
+from backend.core.logger import get_logger
 
-logger = logging.getLogger("friday.tools.orchestrator")
+logger = get_logger("tools.orchestrator")
 
 class ToolOrchestrator:
     def __init__(self):
@@ -29,14 +30,13 @@ class ToolOrchestrator:
         if self.conversation_patterns.match(clean_prompt) or len(clean_prompt.split()) < 3:
             return "conversational"
         
-        # 2. Memory Save Intent (New)
+        # 2. Memory Save Intent
         if self.memory_save_patterns.search(clean_prompt):
-            # Check if it's a question or a statement
             if clean_prompt.startswith(("what", "who", "where", "how")):
-                return "conversational" # It's a query, not a save
+                return "conversational"
             return "memory_save"
         
-        # 3. Tool-specific keywords (Direct Routing Hint)
+        # 3. Tool-specific keywords
         tool_keywords = {
             "calculator": ["calc", "math", "plus", "minus", "multiplied", "divided"],
             "terminal": ["run command", "terminal", "shell", "execute", "list files", "mkdir"],
@@ -48,15 +48,12 @@ class ToolOrchestrator:
             if any(k in clean_prompt for k in keywords):
                 return "tool_execution"
                 
-        # 4. Default to routing logic for complex queries
         return "routing_needed"
 
-    def check_and_execute_tools(self, user_prompt: str, request_id: str = "UNKNOWN") -> str:
+    async def check_and_execute_tools(self, user_prompt: str, request_id: str = "UNKNOWN") -> str:
         """
-        Quickly decides if a tool is needed. 
-        Supports strict 2.0s hard cap.
+        Quickly decides if a tool is needed using async LLM call.
         """
-        start_time = time.time()
         intent = self.get_intent(user_prompt)
         
         if intent in ["conversational", "memory_save"]:
@@ -70,7 +67,8 @@ Rules:
         
         try:
             logger.info(f"[REQ:{request_id}] Calling LLM for tool routing (2s cap).")
-            response = self.llm.generate_json(user_prompt, system=system_prompt, request_id=request_id, timeout=2)
+            # We await the async generate_json
+            response = await self.llm.generate_json(user_prompt, system=system_prompt, request_id=request_id, timeout=3)
             
             if not response or not response.strip() or response == "{}":
                 return None

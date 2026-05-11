@@ -1,5 +1,5 @@
-import logging
 import time
+import uuid
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -7,31 +7,40 @@ from backend.routes.chat import router as chat_router
 from backend.routes.sessions import router as sessions_router
 from backend.routes.memories import router as memories_router
 from backend.routes.health import router as health_router
+from backend.routes.voice import router as voice_router
+from backend.routes.vision import router as vision_router
 from backend.config.settings import settings
+from backend.core.logger import setup_logging
 
 # Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
-    format='{"time": "%(asctime)s", "name": "%(name)s", "level": "%(levelname)s", "message": "%(message)s"}'
-)
-logger = logging.getLogger("friday.main")
+logger = setup_logging()
 
 app = FastAPI(
-    title="F.R.I.D.A.Y. Core",
+    title=settings.APP_NAME,
     description="Production-hardened Local AI Assistant Core",
-    version="1.1.0"
+    version=settings.VERSION
 )
 
 # Exception Middleware
 @app.middleware("http")
 async def exception_handler(request: Request, call_next):
+    request_id = str(uuid.uuid4())[:8]
+    start_time = time.time()
     try:
-        return await call_next(request)
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = str(process_time)
+        response.headers["X-Request-ID"] = request_id
+        return response
     except Exception as e:
-        logger.error(f"Unhandled Exception: {e}", exc_info=True)
+        logger.error(f"[REQ:{request_id}] Unhandled Exception: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
-            content={"error": "F.R.I.D.A.Y. Core encountered an unhandled exception.", "detail": str(e)}
+            content={
+                "error": "F.R.I.D.A.Y. Core encountered an unhandled exception.",
+                "detail": str(e),
+                "request_id": request_id
+            }
         )
 
 # CORS middleware
@@ -48,6 +57,8 @@ app.include_router(chat_router, prefix="/api", tags=["chat"])
 app.include_router(sessions_router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(memories_router, prefix="/api", tags=["memories"])
 app.include_router(health_router, prefix="/api", tags=["health"])
+app.include_router(voice_router, prefix="/api/voice", tags=["voice"])
+app.include_router(vision_router, prefix="/api/vision", tags=["vision"])
 
 @app.get("/")
 def read_root():

@@ -17,20 +17,24 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center h-screen bg-[#0a0a0a] text-white p-8 text-center">
-          <h1 className="text-4xl font-bold text-red-500 mb-4 italic">Core System Failure</h1>
-          <p className="text-gray-400 mb-6 max-w-md">
-            F.R.I.D.A.Y. frontend encountered a critical runtime error. This might be due to a malformed response or a state synchronization issue.
-          </p>
-          <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-lg mb-8 text-left font-mono text-sm overflow-auto max-w-2xl">
-            {this.state.error && this.state.error.toString()}
+        <div className="flex flex-col items-center justify-center h-screen bg-slate-950 text-slate-100 p-6 text-center">
+          <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mb-6 animate-pulse">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
           </div>
+          <h1 className="text-2xl font-bold mb-2">Interface Subsystem Failure</h1>
+          <p className="text-slate-400 max-w-md mb-8">
+            F.R.I.D.A.Y.'s neural interface has encountered a critical error. 
+            The core logic is likely still intact, but the display layer needs a restart.
+          </p>
           <button 
             onClick={() => window.location.reload()}
-            className="px-6 py-2 bg-red-600 hover:bg-red-700 rounded-full font-medium transition-all"
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-blue-500/20"
           >
-            Reboot Interface
+            Re-initialize Interface
           </button>
+          <pre className="mt-8 p-4 bg-slate-900 rounded-lg text-xs text-red-400 text-left overflow-auto max-w-2xl w-full border border-slate-800">
+            {this.state.error?.toString()}
+          </pre>
         </div>
       );
     }
