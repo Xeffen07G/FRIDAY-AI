@@ -96,9 +96,14 @@ class LLMClient:
                                 yield data["response"]
                     return
                     
+                elif response.status_code == 404:
+                    error_msg = f"Model '{self.model}' not found in Ollama. Please run 'ollama pull {self.model}'."
+                    logger.error(f"[REQ:{request_id}] {error_msg}")
+                    yield error_msg
+                    return
                 else:
                     logger.error(f"[REQ:{request_id}] Ollama returned status {response.status_code}: {response.text}")
-                    yield "Error: LLM encountered an unexpected issue."
+                    yield f"Error: LLM returned status {response.status_code}."
                     return
                 
         except requests.exceptions.ConnectionError:
