@@ -137,23 +137,37 @@ export function useChat() {
     }
   };
 
+  const abortControllerRef = useRef(null);
+
+  const stopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+      setStatus("Generation cancelled");
+    }
+  };
+
   const sendMessage = async (text) => {
     if (!text.trim() || isLoading || !currentSessionId) return;
     
     setError(null);
     setStatus("Initializing...");
     setMetrics(null);
+    
     const userMsg = { id: Date.now(), sender: 'user', text };
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
     setIsScrolledUp(false);
-    setTimeout(scrollToBottom, 10);
-
+    
+    abortControllerRef.current = new AbortController();
+    
     try {
       const response = await fetch('http://127.0.0.1:8000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: currentSessionId, message: text }),
+        signal: abortControllerRef.current.signal
       });
 
       if (!response.ok) throw new Error(`Server Error: ${response.status}`);
@@ -162,52 +176,34 @@ export function useChat() {
       const decoder = new TextDecoder("utf-8");
       
       const botMsgId = Date.now() + 1;
-      let isFirstChunk = true;
-      let done = false;
       let fullText = "";
+      let isFirstChunk = true;
 
-      let streamTimeout;
-      const resetStreamTimeout = () => {
-        clearTimeout(streamTimeout);
-        streamTimeout = setTimeout(() => {
-          setStatus("Connection lost");
-          setIsLoading(false);
-        }, 15000);
-      };
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
 
-      try {
-        resetStreamTimeout();
-        while (!done) {
-          const { value, done: readerDone } = await reader.read();
-          done = readerDone;
-          resetStreamTimeout();
-          if (value) {
-            const chunk = decoder.decode(value, { stream: true });
-            
-            // Check for Status Tokens [[STATUS:Text]]
-            if (chunk.includes("[[STATUS:")) {
-              const statusMatch = chunk.match(/\[\[STATUS:(.*?)\]\]/);
-              if (statusMatch) {
-                setStatus(statusMatch[1]);
-                continue;
-              }
-            }
-
-            // Check for Metrics Tokens [[METRICS:JSON]]
-            if (chunk.includes("[[METRICS:")) {
-              const metricsMatch = chunk.match(/\[\[METRICS:(.*?)\]\]/);
-              if (metricsMatch) {
-                try {
-                  setMetrics(JSON.parse(metricsMatch[1]));
-                } catch (e) {}
-                continue;
-              }
-            }
-
-            fullText += chunk;
+        const chunk = decoder.decode(value, { stream: true });
+        
+        // Split chunk into tokens (it might contain multiple status/metrics tokens)
+        // We use a regex that matches both status/metrics tokens and regular text
+        const tokens = chunk.split(/(\[\[.*?\]\])/g);
+        
+        for (const token of tokens) {
+          if (!token) continue;
+          
+          if (token.startsWith("[[STATUS:")) {
+            setStatus(token.replace("[[STATUS:", "").replace("]]", ""));
+          } else if (token.startsWith("[[METRICS:")) {
+            try {
+              setMetrics(JSON.parse(token.replace("[[METRICS:", "").replace("]]", "")));
+            } catch (e) {}
+          } else {
+            // It's actual message text
+            fullText += token;
             
             if (isFirstChunk) {
-              setMessages((prev) => [...prev, { id: botMsgId, sender: 'friday', text: chunk }]);
+              setMessages((prev) => [...prev, { id: botMsgId, sender: 'friday', text: token, streaming: true }]);
               isFirstChunk = false;
             } else {
               setMessages((prev) => 
@@ -218,11 +214,14 @@ export function useChat() {
             }
           }
         }
-        clearTimeout(streamTimeout);
-      } catch (streamErr) {
-        clearTimeout(streamTimeout);
-        throw streamErr;
       }
+
+      // Mark message as finished
+      setMessages((prev) => 
+        prev.map(msg => 
+          msg.id === botMsgId ? { ...msg, streaming: false } : msg
+        )
+      );
 
       if (messages.length <= 1) {
         const newTitle = text.substring(0, 30) + (text.length > 30 ? '...' : '');
@@ -232,11 +231,16 @@ export function useChat() {
       }
 
     } catch (err) {
-      console.error('Chat Error:', err);
-      setError('Connection failed. Please ensure the F.R.I.D.A.Y. backend is running.');
+      if (err.name === 'AbortError') {
+        console.log('Stream aborted by user');
+      } else {
+        console.error('Chat Error:', err);
+        setError('Connection failed. Please ensure the F.R.I.D.A.Y. backend is running.');
+      }
     } finally {
       setIsLoading(false);
       setStatus("");
+      abortControllerRef.current = null;
     }
   };
 
@@ -255,6 +259,7 @@ export function useChat() {
     metrics,
     error,
     sendMessage,
+    stopGeneration,
     chatContainerRef,
     chatEndRef,
     isSidebarOpen,

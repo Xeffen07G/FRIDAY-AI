@@ -10,7 +10,7 @@ export default function App() {
   const { 
     sessions, currentSessionId, createNewSession, switchSession, deleteSession,
     semanticMemories, fetchSemanticMemories, deleteSemanticMemory,
-    messages, isLoading, status, metrics, error, sendMessage, chatContainerRef, chatEndRef,
+    messages, isLoading, status, metrics, error, sendMessage, stopGeneration, chatContainerRef, chatEndRef,
     isSidebarOpen, setIsSidebarOpen, isScrolledUp, scrollToBottom
   } = useChat();
 
@@ -129,7 +129,7 @@ export default function App() {
           </button>
         )}
 
-        <ChatInput onSend={sendMessage} isLoading={isLoading} />
+        <ChatInput onSend={sendMessage} onStop={stopGeneration} isLoading={isLoading} />
       </div>
 
       <SettingsPanel isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />

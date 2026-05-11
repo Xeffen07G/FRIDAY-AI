@@ -132,6 +132,12 @@ class Orchestrator:
                 logger.info(f"[REQ:{request_id}] Completed in {metrics['total_ms']}ms. Intent: {intent}")
                 yield f"\n\n[[METRICS:{json.dumps(metrics)}]]"
                 
+            except GeneratorExit:
+                logger.warning(f"[REQ:{request_id}] Client disconnected. Cancelling stream.")
+                # We still want to save what we have if it's significant
+                if len(full_response) > 10:
+                    await task_manager.run_task(f"save_friday_msg_partial_{request_id}", asyncio.to_thread(save_message, session_id, "friday", full_response + "... [Interrupted]"))
+                raise
             except Exception as e:
                 logger.error(f"[REQ:{request_id}] Orchestration crash: {e}", exc_info=True)
                 yield f"\n\n❌ **Orchestrator Error:** {str(e)}"

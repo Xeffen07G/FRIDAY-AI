@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 
-export default function ChatInput({ onSend, isLoading }) {
+export default function ChatInput({ onSend, onStop, isLoading }) {
   const [inputValue, setInputValue] = useState('');
   const [isListening, setIsListening] = useState(false);
   const fileInputRef = useRef(null);
@@ -10,6 +10,10 @@ export default function ChatInput({ onSend, isLoading }) {
       onSend(inputValue.trim());
       setInputValue('');
     }
+  };
+
+  const handleStop = () => {
+    if (onStop) onStop();
   };
 
   const handleKeyDown = (e) => {
@@ -88,25 +92,37 @@ export default function ChatInput({ onSend, isLoading }) {
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isLoading}
           />
           
-          <button 
-            onClick={handleSend}
-            disabled={isLoading || !inputValue.trim()}
-            className={`absolute right-1.5 p-2.5 rounded-full transition-all duration-200 ${
-              inputValue.trim() && !isLoading 
-                ? 'bg-blue-600 hover:bg-blue-500 text-white' 
-                : 'bg-slate-800/50 text-slate-600'
-            }`}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"></line>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-            </svg>
-          </button>
+          <div className="absolute right-1.5 flex items-center gap-1">
+            {isLoading ? (
+              <button 
+                onClick={handleStop}
+                className="p-2.5 bg-slate-800 hover:bg-slate-700 text-red-400 rounded-full transition-all duration-200 border border-slate-700/50 group"
+                title="Stop Generation"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform">
+                  <rect x="6" y="6" width="12" height="12"></rect>
+                </svg>
+              </button>
+            ) : (
+              <button 
+                onClick={handleSend}
+                disabled={!inputValue.trim()}
+                className={`p-2.5 rounded-full transition-all duration-200 ${
+                  inputValue.trim()
+                    ? 'bg-blue-600 hover:bg-blue-500 text-white' 
+                    : 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
+                }`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
-      </div>
     </div>
   );
 }
