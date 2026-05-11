@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 export function useChat() {
   const [sessions, setSessions] = useState([]);
@@ -14,7 +14,9 @@ export function useChat() {
   const chatEndRef = useRef(null);
   const chatContainerRef = useRef(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
+  const abortControllerRef = useRef(null);
 
+  // Persistence of session selection
   useEffect(() => {
     if (currentSessionId) {
       localStorage.setItem('friday_session_id', currentSessionId);
@@ -23,40 +25,48 @@ export function useChat() {
     }
   }, [currentSessionId]);
 
-  const handleScroll = () => {
+  // Unified scroll listener
+  const handleScroll = useCallback(() => {
     if (!chatContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
-    const isUp = scrollHeight - scrollTop - clientHeight > 100;
-    setIsScrolledUp(isUp);
-  };
-
-  const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    if (!isScrolledUp) {
-      scrollToBottom();
+    // Using a 50px buffer for stability
+    const isUp = scrollHeight - scrollTop - clientHeight > 50;
+    if (isUp !== isScrolledUp) {
+      setIsScrolledUp(isUp);
     }
-  }, [messages, isLoading]);
+  }, [isScrolledUp]);
 
   useEffect(() => {
-    fetchSessions();
+    const container = chatContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
+
+  const scrollToBottom = useCallback((behavior = 'smooth') => {
+    chatEndRef.current?.scrollIntoView({ behavior });
   }, []);
 
-  const fetchSessions = async () => {
+  // Automatic scrolling during generation
+  useEffect(() => {
+    if (!isScrolledUp && (isLoading || messages.length > 0)) {
+      scrollToBottom('smooth');
+    }
+  }, [messages, isLoading, isScrolledUp, scrollToBottom]);
+
+  const fetchSessions = useCallback(async () => {
     try {
       const res = await fetch('http://127.0.0.1:8000/api/sessions');
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
       const data = await res.json();
       const sessionArray = Array.isArray(data) ? data : [];
       setSessions(sessionArray);
+      
       if (sessionArray.length > 0) {
-        if (currentSessionId && sessionArray.find(s => s.id === currentSessionId)) {
-          switchSession(currentSessionId);
-        } else {
-          switchSession(sessionArray[0].id);
-        }
+        const savedId = localStorage.getItem('friday_session_id');
+        const activeId = (savedId && sessionArray.find(s => s.id === savedId)) ? savedId : sessionArray[0].id;
+        switchSession(activeId);
       } else {
         createNewSession();
       }
@@ -65,9 +75,13 @@ export function useChat() {
       setSessions([]);
       setError("Failed to connect to F.R.I.D.A.Y. memory core.");
     }
-  };
+  }, []);
 
-  const createNewSession = async () => {
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  const createNewSession = useCallback(async () => {
     try {
       const res = await fetch('http://127.0.0.1:8000/api/sessions', {
         method: 'POST',
@@ -81,11 +95,12 @@ export function useChat() {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, []);
 
-  const switchSession = async (id) => {
+  const switchSession = useCallback(async (id) => {
     setCurrentSessionId(id);
     setError(null);
+    setMessages([]); // Clear current UI immediately for responsiveness
     try {
       const res = await fetch(`http://127.0.0.1:8000/api/sessions/${id}/messages`);
       const data = await res.json();
@@ -94,31 +109,31 @@ export function useChat() {
       } else {
         setMessages(data);
       }
-      setTimeout(scrollToBottom, 50);
+      // Use requestAnimationFrame for smoother transition after state update
+      requestAnimationFrame(() => scrollToBottom('auto'));
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [scrollToBottom]);
 
-  const deleteSession = async (id, e) => {
-    e.stopPropagation();
+  const deleteSession = useCallback(async (id, e) => {
+    if (e) e.stopPropagation();
     try {
       await fetch(`http://127.0.0.1:8000/api/sessions/${id}`, { method: 'DELETE' });
-      setSessions(prev => prev.filter(s => s.id !== id));
-      if (currentSessionId === id) {
-        const remaining = sessions.filter(s => s.id !== id);
-        if (remaining.length > 0) {
-          switchSession(remaining[0].id);
-        } else {
-          createNewSession();
+      setSessions(prev => {
+        const filtered = prev.filter(s => s.id !== id);
+        if (currentSessionId === id) {
+          if (filtered.length > 0) setTimeout(() => switchSession(filtered[0].id), 0);
+          else setTimeout(createNewSession, 0);
         }
-      }
+        return filtered;
+      });
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [currentSessionId, switchSession, createNewSession]);
 
-  const fetchSemanticMemories = async () => {
+  const fetchSemanticMemories = useCallback(async () => {
     try {
       const res = await fetch('http://127.0.0.1:8000/api/memories');
       const data = await res.json();
@@ -126,33 +141,31 @@ export function useChat() {
     } catch (err) {
       console.error("Failed to fetch memories", err);
     }
-  };
+  }, []);
 
-  const deleteSemanticMemory = async (id) => {
+  const deleteSemanticMemory = useCallback(async (id) => {
     try {
       await fetch(`http://127.0.0.1:8000/api/memories/${id}`, { method: 'DELETE' });
       setSemanticMemories(prev => prev.filter(m => m.id !== id));
     } catch (err) {
       console.error("Failed to delete memory", err);
     }
-  };
+  }, []);
 
-  const abortControllerRef = useRef(null);
-
-  const stopGeneration = () => {
+  const stopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
       setIsLoading(false);
-      setStatus("Generation cancelled");
+      setStatus("Generation stopped");
     }
-  };
+  }, []);
 
-  const sendMessage = async (text) => {
+  const sendMessage = useCallback(async (text) => {
     if (!text.trim() || isLoading || !currentSessionId) return;
     
     setError(null);
-    setStatus("Initializing...");
+    setStatus("Thinking...");
     setMetrics(null);
     
     const userMsg = { id: Date.now(), sender: 'user', text };
@@ -184,87 +197,69 @@ export function useChat() {
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        
-        // Split chunk into tokens (it might contain multiple status/metrics tokens)
-        // We use a regex that matches both status/metrics tokens and regular text
         const tokens = chunk.split(/(\[\[.*?\]\])/g);
         
+        // Process chunk tokens in batch
+        let chunkStatus = null;
+        let chunkMetrics = null;
+        let chunkText = "";
+
         for (const token of tokens) {
           if (!token) continue;
-          
           if (token.startsWith("[[STATUS:")) {
-            setStatus(token.replace("[[STATUS:", "").replace("]]", ""));
+            chunkStatus = token.replace("[[STATUS:", "").replace("]]", "");
           } else if (token.startsWith("[[METRICS:")) {
-            try {
-              setMetrics(JSON.parse(token.replace("[[METRICS:", "").replace("]]", "")));
-            } catch (e) {}
+            try { chunkMetrics = JSON.parse(token.replace("[[METRICS:", "").replace("]]", "")); } catch (e) {}
           } else {
-            // It's actual message text
-            fullText += token;
-            
-            if (isFirstChunk) {
-              setMessages((prev) => [...prev, { id: botMsgId, sender: 'friday', text: token, streaming: true }]);
-              isFirstChunk = false;
-            } else {
-              setMessages((prev) => 
-                prev.map(msg => 
-                  msg.id === botMsgId ? { ...msg, text: fullText } : msg
-                )
-              );
-            }
+            chunkText += token;
           }
+        }
+
+        // Apply batch updates
+        if (chunkStatus) setStatus(chunkStatus);
+        if (chunkMetrics) setMetrics(chunkMetrics);
+        if (chunkText) {
+          fullText += chunkText;
+          setMessages((prev) => {
+            if (isFirstChunk) {
+              isFirstChunk = false;
+              return [...prev, { id: botMsgId, sender: 'friday', text: chunkText, streaming: true }];
+            }
+            const next = [...prev];
+            const idx = next.findIndex(m => m.id === botMsgId);
+            if (idx !== -1) next[idx] = { ...next[idx], text: fullText };
+            return next;
+          });
         }
       }
 
-      // Mark message as finished
-      setMessages((prev) => 
-        prev.map(msg => 
-          msg.id === botMsgId ? { ...msg, streaming: false } : msg
-        )
-      );
+      setMessages((prev) => prev.map(msg => 
+        msg.id === botMsgId ? { ...msg, streaming: false } : msg
+      ));
 
+      // Update title if first message
       if (messages.length <= 1) {
         const newTitle = text.substring(0, 30) + (text.length > 30 ? '...' : '');
-        setSessions(prev => prev.map(s => 
-          s.id === currentSessionId ? { ...s, title: newTitle } : s
-        ));
+        setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, title: newTitle } : s));
       }
 
     } catch (err) {
-      if (err.name === 'AbortError') {
-        console.log('Stream aborted by user');
-      } else {
+      if (err.name === 'AbortError') console.log('Stream aborted');
+      else {
         console.error('Chat Error:', err);
-        setError('Connection failed. Please ensure the F.R.I.D.A.Y. backend is running.');
+        setError('Connection failed. Please ensure the backend is active.');
       }
     } finally {
       setIsLoading(false);
       setStatus("");
       abortControllerRef.current = null;
     }
-  };
+  }, [currentSessionId, isLoading, messages.length]);
 
   return {
-    sessions,
-    currentSessionId,
-    createNewSession,
-    switchSession,
-    deleteSession,
-    semanticMemories,
-    fetchSemanticMemories,
-    deleteSemanticMemory,
-    messages,
-    isLoading,
-    status,
-    metrics,
-    error,
-    sendMessage,
-    stopGeneration,
-    chatContainerRef,
-    chatEndRef,
-    isSidebarOpen,
-    setIsSidebarOpen,
-    isScrolledUp,
-    scrollToBottom
+    sessions, currentSessionId, createNewSession, switchSession, deleteSession,
+    semanticMemories, fetchSemanticMemories, deleteSemanticMemory,
+    messages, isLoading, status, metrics, error, sendMessage, stopGeneration,
+    chatContainerRef, chatEndRef, isSidebarOpen, setIsSidebarOpen, isScrolledUp, scrollToBottom
   };
 }

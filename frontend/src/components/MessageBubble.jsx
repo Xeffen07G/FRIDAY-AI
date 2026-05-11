@@ -48,7 +48,7 @@ function MessageBubble({ message }) {
                   );
                 },
                 p({ children }) {
-                  return <p className="mb-4 last:mb-0 leading-loose inline">{children}</p>;
+                  return <p className="mb-4 last:mb-0 leading-relaxed inline-block w-full">{children}</p>;
                 },
                 ul({ children }) {
                   return <ul className="list-disc pl-6 mb-4 space-y-2 marker:text-slate-500">{children}</ul>;
