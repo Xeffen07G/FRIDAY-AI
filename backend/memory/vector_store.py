@@ -78,6 +78,16 @@ class VectorStore:
             logger.error(f"Failed to search memories: {e}")
             return []
 
+    def update_metadata(self, memory_id: str, metadata: dict):
+        if not self.collection:
+            return False
+        try:
+            self.collection.update(ids=[memory_id], metadatas=[metadata])
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update memory metadata: {e}")
+            return False
+
     def delete_memory(self, memory_id: str):
         if not self.collection:
             return False
