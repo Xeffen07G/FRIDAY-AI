@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from backend.orchestrator.orchestrator import Orchestrator
@@ -16,7 +16,7 @@ class ChatRequest(BaseModel):
     message: str
 
 @router.post("/chat")
-async def chat_endpoint(req: ChatRequest):
+async def chat_endpoint(req: ChatRequest, background_tasks: BackgroundTasks):
     """
     Receives a message, sends it to the orchestrator, and returns the response.
     """
@@ -35,7 +35,7 @@ async def chat_endpoint(req: ChatRequest):
         # We pass request_id to process_stream for full lifecycle tracing
         orchestrator = Orchestrator()
         return StreamingResponse(
-            orchestrator.process_stream(req.session_id, req.message, request_id),
+            orchestrator.process_stream(req.session_id, req.message, request_id, background_tasks),
             media_type="text/event-stream"
         )
     except HTTPException:

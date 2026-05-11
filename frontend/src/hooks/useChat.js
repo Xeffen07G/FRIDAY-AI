@@ -8,6 +8,8 @@ export function useChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [status, setStatus] = useState("");
+  const [metrics, setMetrics] = useState(null);
   
   const chatEndRef = useRef(null);
   const chatContainerRef = useRef(null);
@@ -32,14 +34,12 @@ export function useChat() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Auto-scroll to the bottom when messages change, ONLY if not scrolled up
   useEffect(() => {
     if (!isScrolledUp) {
       scrollToBottom();
     }
   }, [messages, isLoading]);
 
-  // Load sessions on mount
   useEffect(() => {
     fetchSessions();
   }, []);
@@ -47,20 +47,23 @@ export function useChat() {
   const fetchSessions = async () => {
     try {
       const res = await fetch('http://127.0.0.1:8000/api/sessions');
+      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
       const data = await res.json();
-      setSessions(data);
-      if (data.length > 0) {
-        if (currentSessionId && data.find(s => s.id === currentSessionId)) {
+      const sessionArray = Array.isArray(data) ? data : [];
+      setSessions(sessionArray);
+      if (sessionArray.length > 0) {
+        if (currentSessionId && sessionArray.find(s => s.id === currentSessionId)) {
           switchSession(currentSessionId);
         } else {
-          switchSession(data[0].id);
+          switchSession(sessionArray[0].id);
         }
       } else {
         createNewSession();
       }
     } catch (err) {
-      console.error("Failed to load sessions", err);
-      setMessages([{ id: 1, sender: 'friday', text: 'F.R.I.D.A.Y. offline mode.' }]);
+      console.error("Failed to load sessions:", err);
+      setSessions([]);
+      setError("Failed to connect to F.R.I.D.A.Y. memory core.");
     }
   };
 
@@ -91,7 +94,7 @@ export function useChat() {
       } else {
         setMessages(data);
       }
-      setTimeout(scrollToBottom, 50); // Small delay to ensure render
+      setTimeout(scrollToBottom, 50);
     } catch (err) {
       console.error(err);
     }
@@ -102,7 +105,6 @@ export function useChat() {
     try {
       await fetch(`http://127.0.0.1:8000/api/sessions/${id}`, { method: 'DELETE' });
       setSessions(prev => prev.filter(s => s.id !== id));
-      
       if (currentSessionId === id) {
         const remaining = sessions.filter(s => s.id !== id);
         if (remaining.length > 0) {
@@ -139,10 +141,12 @@ export function useChat() {
     if (!text.trim() || isLoading || !currentSessionId) return;
     
     setError(null);
+    setStatus("Initializing...");
+    setMetrics(null);
     const userMsg = { id: Date.now(), sender: 'user', text };
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
-    setIsScrolledUp(false); // Force scroll down on send
+    setIsScrolledUp(false);
     setTimeout(scrollToBottom, 10);
 
     try {
@@ -152,9 +156,7 @@ export function useChat() {
         body: JSON.stringify({ session_id: currentSessionId, message: text }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Server Error: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`Server Error: ${response.status}`);
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
@@ -162,18 +164,13 @@ export function useChat() {
       const botMsgId = Date.now() + 1;
       let isFirstChunk = true;
       let done = false;
+      let fullText = "";
 
-      // Watchdog timer to prevent frontend hang if backend dies without closing
       let streamTimeout;
       const resetStreamTimeout = () => {
         clearTimeout(streamTimeout);
         streamTimeout = setTimeout(() => {
-          console.error("Stream reader timeout - no chunks received for 15s");
-          setMessages((prev) => 
-            prev.map(msg => 
-              msg.id === botMsgId ? { ...msg, text: msg.text + "\n\n⚠️ Stream connection lost." } : msg
-            )
-          );
+          setStatus("Connection lost");
           setIsLoading(false);
         }, 15000);
       };
@@ -187,13 +184,35 @@ export function useChat() {
           if (value) {
             const chunk = decoder.decode(value, { stream: true });
             
+            // Check for Status Tokens [[STATUS:Text]]
+            if (chunk.includes("[[STATUS:")) {
+              const statusMatch = chunk.match(/\[\[STATUS:(.*?)\]\]/);
+              if (statusMatch) {
+                setStatus(statusMatch[1]);
+                continue;
+              }
+            }
+
+            // Check for Metrics Tokens [[METRICS:JSON]]
+            if (chunk.includes("[[METRICS:")) {
+              const metricsMatch = chunk.match(/\[\[METRICS:(.*?)\]\]/);
+              if (metricsMatch) {
+                try {
+                  setMetrics(JSON.parse(metricsMatch[1]));
+                } catch (e) {}
+                continue;
+              }
+            }
+
+            fullText += chunk;
+            
             if (isFirstChunk) {
               setMessages((prev) => [...prev, { id: botMsgId, sender: 'friday', text: chunk }]);
               isFirstChunk = false;
             } else {
               setMessages((prev) => 
                 prev.map(msg => 
-                  msg.id === botMsgId ? { ...msg, text: msg.text + chunk } : msg
+                  msg.id === botMsgId ? { ...msg, text: fullText } : msg
                 )
               );
             }
@@ -205,7 +224,6 @@ export function useChat() {
         throw streamErr;
       }
 
-      // Update session title locally if it was the first message
       if (messages.length <= 1) {
         const newTitle = text.substring(0, 30) + (text.length > 30 ? '...' : '');
         setSessions(prev => prev.map(s => 
@@ -216,13 +234,9 @@ export function useChat() {
     } catch (err) {
       console.error('Chat Error:', err);
       setError('Connection failed. Please ensure the F.R.I.D.A.Y. backend is running.');
-      setMessages((prev) => [...prev, { 
-        id: Date.now() + 1, 
-        sender: 'friday', 
-        text: 'Error: Could not reach the core systems.' 
-      }]);
     } finally {
       setIsLoading(false);
+      setStatus("");
     }
   };
 
@@ -237,6 +251,8 @@ export function useChat() {
     deleteSemanticMemory,
     messages,
     isLoading,
+    status,
+    metrics,
     error,
     sendMessage,
     chatContainerRef,

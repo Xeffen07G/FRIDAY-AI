@@ -7,7 +7,7 @@ export default function App() {
   const { 
     sessions, currentSessionId, createNewSession, switchSession, deleteSession,
     semanticMemories, fetchSemanticMemories, deleteSemanticMemory,
-    messages, isLoading, error, sendMessage, chatContainerRef, chatEndRef,
+    messages, isLoading, status, metrics, error, sendMessage, chatContainerRef, chatEndRef,
     isSidebarOpen, setIsSidebarOpen, isScrolledUp, scrollToBottom
   } = useChat();
 
@@ -51,41 +51,53 @@ export default function App() {
         
         <div className="flex-1 overflow-y-auto p-3 space-y-1.5 custom-scrollbar">
           {sidebarTab === 'sessions' ? (
-            sessions.map(session => (
-              <div 
-                key={session.id}
-                onClick={() => switchSession(session.id)}
-                className={`group flex items-center justify-between w-full text-left px-3 py-2.5 rounded-lg text-sm cursor-pointer transition-all ${
-                  currentSessionId === session.id 
-                    ? 'bg-blue-600/10 text-blue-300 border border-blue-500/30 shadow-inner' 
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent'
-                }`}
-              >
-                <span className="truncate flex-1 pr-2">{session.title}</span>
-                <button 
-                  onClick={(e) => deleteSession(session.id, e)}
-                  className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded transition-all"
-                  title="Delete Session"
+            Array.isArray(sessions) && sessions.length > 0 ? (
+              sessions.map(session => (
+                <div 
+                  key={session.id}
+                  onClick={() => switchSession(session.id)}
+                  className={`group flex items-center justify-between w-full text-left px-3 py-2.5 rounded-lg text-sm cursor-pointer transition-all ${
+                    currentSessionId === session.id 
+                      ? 'bg-blue-600/10 text-blue-300 border border-blue-500/30 shadow-inner' 
+                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent'
+                  }`}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                </button>
-              </div>
-            ))
-          ) : (
-            semanticMemories.map(mem => (
-              <div key={mem.id} className="group relative w-full text-left p-3 rounded-lg text-xs bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all text-slate-300">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-mono text-[10px] text-blue-400 uppercase tracking-wider">{mem.metadata?.category || 'context'}</span>
+                  <span className="truncate flex-1 pr-2">{session.title}</span>
                   <button 
-                    onClick={() => deleteSemanticMemory(mem.id)}
-                    className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-colors"
+                    onClick={(e) => deleteSession(session.id, e)}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded transition-all"
+                    title="Delete Session"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                   </button>
                 </div>
-                <p className="line-clamp-3 leading-relaxed text-slate-400">{mem.text}</p>
+              ))
+            ) : (
+              <div className="text-center py-10">
+                <p className="text-xs text-slate-500 italic">No sessions found</p>
               </div>
-            ))
+            )
+          ) : (
+            Array.isArray(semanticMemories) && semanticMemories.length > 0 ? (
+              semanticMemories.map(mem => (
+                <div key={mem.id} className="group relative w-full text-left p-3 rounded-lg text-xs bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all text-slate-300">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-[10px] text-blue-400 uppercase tracking-wider">{mem.metadata?.category || 'context'}</span>
+                    <button 
+                      onClick={() => deleteSemanticMemory(mem.id)}
+                      className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                  </div>
+                  <p className="line-clamp-3 leading-relaxed text-slate-400">{mem.text}</p>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-10">
+                <p className="text-xs text-slate-500 italic">No memories stored</p>
+              </div>
+            )
           )}
         </div>
       </div>
@@ -125,12 +137,27 @@ export default function App() {
             ))}
             
             {/* Loading State */}
-            {isLoading && messages[messages.length - 1]?.sender === 'user' && (
-              <div className="flex w-full justify-start animate-pulse">
-                <div className="bg-slate-800 text-slate-400 border border-slate-700/50 px-5 py-4 rounded-2xl rounded-bl-sm text-[15px] flex items-center gap-2 shadow-sm">
-                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+            {isLoading && (
+              <div className="flex flex-col w-full items-start gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="bg-slate-800 text-slate-400 border border-slate-700/50 px-5 py-4 rounded-2xl rounded-bl-sm text-[15px] flex items-center gap-3 shadow-sm">
+                  <div className="flex gap-1">
+                    <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  </div>
+                  {status && <span className="text-xs font-mono text-slate-500 uppercase tracking-widest animate-pulse">{status}</span>}
+                </div>
+              </div>
+            )}
+
+            {/* Metrics Display */}
+            {metrics && !isLoading && (
+              <div className="flex justify-center">
+                <div className="flex gap-4 px-4 py-2 bg-slate-900/50 border border-slate-800/80 rounded-full text-[10px] font-mono text-slate-500">
+                  <span>RETRIEVAL: {metrics.retrieval_ms}ms</span>
+                  <span>TOOLS: {metrics.tool_ms}ms</span>
+                  <span>GEN: {metrics.generation_ms}ms</span>
+                  <span className="text-blue-400/70">TOTAL: {metrics.total_ms}ms</span>
                 </div>
               </div>
             )}

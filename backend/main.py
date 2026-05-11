@@ -32,7 +32,7 @@ app.add_middleware(
 
 # Register our routes
 app.include_router(chat_router, prefix="/api", tags=["chat"])
-app.include_router(sessions_router, prefix="/api", tags=["sessions"])
+app.include_router(sessions_router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(memories_router, prefix="/api", tags=["memories"])
 app.include_router(health_router, prefix="/api", tags=["health"])
 

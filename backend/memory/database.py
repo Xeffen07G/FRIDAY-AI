@@ -98,7 +98,7 @@ def get_messages(session_id: str):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id, role, content, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC", (session_id,))
-    messages = [{"id": row["id"], "sender": row["role"], "text": row["content"]} for row in cursor.fetchall()]
+    messages = [{"id": row["id"], "sender": row["role"], "text": row["content"], "created_at": row["created_at"]} for row in cursor.fetchall()]
     conn.close()
     return messages
 

@@ -89,7 +89,16 @@ export default function MessageBubble({ message }) {
               <span className="text-slate-600">•</span>
               <span>~{Math.max(1, Math.ceil(message.text.length / 4))} tkns</span>
             </div>
-            {message.id && <span className="opacity-75">{new Date(message.id).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>}
+            { (message.created_at || message.id) && (
+              <span className="opacity-75">
+                {(() => {
+                  try {
+                    const date = new Date(message.created_at || message.id);
+                    return isNaN(date.getTime()) ? "" : date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                  } catch (e) { return ""; }
+                })()}
+              </span>
+            )}
           </div>
         )}
       </div>

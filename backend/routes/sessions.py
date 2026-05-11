@@ -7,12 +7,12 @@ router = APIRouter()
 class SessionCreate(BaseModel):
     title: str = "New Chat"
 
-@router.get("/")
+@router.get("")
 def list_sessions():
     """Retrieve all chat sessions."""
     return get_all_sessions()
 
-@router.post("/")
+@router.post("")
 def create_new_session(req: SessionCreate):
     """Create a new chat session."""
     return create_session(req.title)

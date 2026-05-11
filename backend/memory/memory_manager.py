@@ -58,14 +58,23 @@ class MemoryManager:
 
     def get_relevant_context(self, query: str, limit: int = 3):
         """Retrieves and ranks relevant memories based on similarity and recency."""
+        # Optimization: Only search memory if prompt suggests recall
+        trigger_keywords = ["remember", "recall", "earlier", "know about", "my", "preferences", "past", "history", "previous"]
+        if not any(word in query.lower() for word in trigger_keywords):
+            return ""
+
         try:
+            start_time = datetime.now()
             embedding = embedding_service.get_embedding(query)
             if not embedding:
                 return ""
 
-            raw_results = vector_store.search_memories(embedding, n_results=limit * 2)
+            raw_results = vector_store.search_memories(embedding, n_results=limit)
             if not raw_results:
                 return ""
+            
+            retrieval_ms = (datetime.now() - start_time).total_seconds() * 1000
+            logger.debug(f"Memory retrieval completed in {retrieval_ms:.2f}ms")
 
             now = datetime.now()
             ranked_results = []
