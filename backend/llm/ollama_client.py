@@ -12,7 +12,7 @@ class LLMClient:
         self.model = settings.MODEL_NAME
         self.base_url = settings.OLLAMA_BASE_URL
         
-    def generate_json(self, prompt: str, system: str = None, request_id: str = "UNKNOWN"):
+    def generate_json(self, prompt: str, system: str = None, request_id: str = "UNKNOWN", timeout: int = 20):
         """Sends a request to Ollama requesting strict JSON output."""
         try:
             logger.info(f"[REQ:{request_id}] Sending JSON tool routing request to Ollama ({self.model})...")
@@ -24,7 +24,7 @@ class LLMClient:
                 "format": "json",
                 "options": {
                     "temperature": 0.0,
-                    "num_predict": 128 # Routing should be short
+                    "num_predict": 128
                 }
             }
             if system:
@@ -33,7 +33,7 @@ class LLMClient:
             response = requests.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
-                timeout=20
+                timeout=timeout # Strict timeout for orchestration calls
             )
             
             if response.status_code == 200:
@@ -43,6 +43,9 @@ class LLMClient:
             logger.error(f"[REQ:{request_id}] JSON Generation HTTP Error: {response.status_code}")
             return "{}"
             
+        except requests.exceptions.Timeout:
+            logger.warning(f"[REQ:{request_id}] LLM JSON request timed out after {timeout}s.")
+            return "{}"
         except Exception as e:
             logger.error(f"[REQ:{request_id}] Error in JSON generation: {e}")
             return "{}"
@@ -55,7 +58,6 @@ class LLMClient:
         try:
             logger.info(f"[REQ:{request_id}] Sending stream request to Ollama ({self.model})...")
             
-            # Default optimized options for local inference
             final_options = {
                 "temperature": 0.7,
                 "num_predict": 512,

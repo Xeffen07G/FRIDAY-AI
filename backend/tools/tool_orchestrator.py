@@ -24,7 +24,15 @@ class ToolOrchestrator:
         if self.conversation_patterns.match(clean_prompt) or len(clean_prompt.split()) < 3:
             return "conversational"
         
-        # 2. Tool-specific keywords (Direct Routing Hint)
+        # 2. Memory/Conversational patterns (Skip LLM Routing for these)
+        # If it's a question about "me" or "my" but doesn't mention specific tool actions, bypass tools
+        personal_query = any(word in clean_prompt for word in ["what", "who", "where", "my", "me", "remember", "recall"])
+        has_tool_keyword = any(word in clean_prompt for word in ["calc", "run", "file", "mkdir", "command", "system", "cpu", "usage"])
+        
+        if personal_query and not has_tool_keyword:
+            return "conversational" # Let memory retrieval handle it without routing
+        
+        # 3. Tool-specific keywords (Direct Routing Hint)
         tool_keywords = {
             "calculator": ["calc", "math", "plus", "minus", "multiplied", "divided"],
             "terminal": ["run command", "terminal", "shell", "execute", "list files", "mkdir"],
@@ -36,7 +44,7 @@ class ToolOrchestrator:
             if any(k in clean_prompt for k in keywords):
                 return "tool_execution"
                 
-        # 3. Default to routing logic for complex queries
+        # 4. Default to routing logic for complex queries
         return "routing_needed"
 
     def check_and_execute_tools(self, user_prompt: str, request_id: str = "UNKNOWN") -> str:
@@ -52,7 +60,6 @@ class ToolOrchestrator:
         logger.info(f"[REQ:{request_id}] Intent classification: {intent} ({intent_duration*1000:.1f}ms)")
         
         if intent == "conversational":
-            logger.info(f"[REQ:{request_id}] Bypassing tools for conversational prompt.")
             return None
 
         # Step 2: LLM Routing with 2.0s Hard Cap
@@ -64,19 +71,9 @@ Rules:
         
         try:
             logger.info(f"[REQ:{request_id}] Calling LLM for tool routing (2s cap).")
-            # We use a shorter timeout for routing to ensure overall latency remains low
-            # Note: Ollama doesn't support request-level timeouts in the generate API easily without cancelling, 
-            # but we can check timing after the call or use a separate thread.
+            # PASSING 2s TIMEOUT TO LLM CLIENT
+            response = self.llm.generate_json(user_prompt, system=system_prompt, request_id=request_id, timeout=2)
             
-            routing_call_start = time.time()
-            # Reduce max tokens or use a faster model check if possible
-            response = self.llm.generate_json(user_prompt, system=system_prompt, request_id=request_id)
-            routing_duration = time.time() - routing_call_start
-            
-            if routing_duration > 2.0:
-                logger.warning(f"[REQ:{request_id}] Tool routing exceeded 2s ({routing_duration:.2f}s). Fallback to direct answer.")
-                return None
-                
             if not response or not response.strip() or response == "{}":
                 return None
                 
@@ -86,15 +83,11 @@ Rules:
             if tool_name and tool_name != "none":
                 logger.info(f"[REQ:{request_id}] Executing tool: {tool_name}")
                 args = data.get("args", {})
-                
-                # Execute tool
                 result = tool_registry.execute_tool(tool_name, args)
-                result_str = str(result)
-                
-                return f"--- TOOL EXECUTION RESULTS ---\nTool: {tool_name}\nResult: {result_str}\n-----------------------------"
+                return f"--- TOOL EXECUTION RESULTS ---\nTool: {tool_name}\nResult: {str(result)}\n-----------------------------"
                 
         except Exception as e:
-            logger.error(f"[REQ:{request_id}] Tool routing error: {e}")
+            logger.error(f"[REQ:{request_id}] Tool routing error/timeout: {e}")
             
         return None
 
