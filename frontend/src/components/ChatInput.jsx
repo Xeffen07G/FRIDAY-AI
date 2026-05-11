@@ -123,6 +123,7 @@ export default function ChatInput({ onSend, onStop, isLoading }) {
             )}
           </div>
         </div>
+      </div>
     </div>
   );
 }

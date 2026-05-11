@@ -22,3 +22,16 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+# SQLite backups
+*.db.bak
+*.sqlite
+*.sqlite3
+
+# Vector / embedding stores
+chroma/
+vector_db/
+memory/
+
+# temp/cache
+tmp/
+.cache/
