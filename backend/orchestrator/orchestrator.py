@@ -1,15 +1,15 @@
 import json
 import asyncio
 import time
-from backend.llm.ollama_client import LLMClient
-from backend.orchestrator.prompt_manager import PromptManager
-from backend.memory.database import save_message, get_messages, update_session_title
-from backend.memory.memory_manager import memory_manager
-from backend.tools.tool_orchestrator import tool_orchestrator
-from backend.config.settings import settings
-from backend.core.logger import get_logger
-from backend.core.task_manager import task_manager
-from backend.core.model_manager import model_manager
+from llm.ollama_client import LLMClient
+from orchestrator.prompt_manager import PromptManager
+from memory.database import save_message, get_messages, update_session_title
+from memory.memory_manager import memory_manager
+from tools.tool_orchestrator import tool_orchestrator
+from config.settings import settings
+from core.logger import get_logger
+from core.task_manager import task_manager
+from core.model_manager import model_manager
 
 logger = get_logger("orchestrator")
 
@@ -57,64 +57,105 @@ class Orchestrator:
 
                 # 2. State Setup (Save user msg early)
                 await task_manager.run_task(f"save_user_msg_{request_id}", asyncio.to_thread(save_message, session_id, "user", user_input))
+                          # 3. Planning Phase (Phase 3: Failure Recovery - Graceful Degradation)
+                from core.planner import planner
+                from core.event_bus import event_bus
                 
-                # 3. Intent Classification
-                intent_start = time.time()
-                intent = tool_orchestrator.get_intent(user_input)
-                metrics["intent_ms"] = int((time.time() - intent_start) * 1000)
+                try:
+                    plan = planner.plan(user_input, [])
+                    event_bus.emit("brain", "planning_started", {"request_id": request_id, "plan": plan})
+                except Exception as pe:
+                    logger.error(f"Planning Engine failure: {pe}")
+                    plan = {"complexity": "conversational", "strategy": "direct", "require_scratchpad": False, "latency_budget": 2.0}
+                    event_bus.emit("brain", "planning_fallback", {"request_id": request_id, "error": str(pe)})
                 
-                # 4. Context Retrieval (Lightweight Mode Check)
-                yield "[[STATUS:Searching memory...]]"
-                retrieval_start = time.time()
-                past_msgs = await asyncio.to_thread(get_messages, session_id)
-                
-                # Dynamic context window based on RAM
-                window_size = settings.CONTEXT_WINDOW_SIZE
-                retrieval_limit = 3
-                
-                if model_manager.is_ram_under_pressure():
-                    logger.warning(f"[REQ:{request_id}] RAM pressure detected. Scaling down context.")
-                    window_size = max(4, window_size // 2)
-                    retrieval_limit = 1
-                    yield "[[STATUS:Lightweight mode active...]]"
-                
-                recent_context = "\n".join([f"{'Assistant' if m['sender']=='friday' else 'User'}: {m['text']}" for m in past_msgs[-window_size:]])
-                
-                semantic_context = await memory_manager.get_relevant_context(user_input, limit=retrieval_limit)
-                combined_context = f"{recent_context}\n{semantic_context}".strip()
-                metrics["retrieval_ms"] = int((time.time() - retrieval_start) * 1000)
-                
-                # 5. Tool Execution
+                # 4. Context Retrieval
+                semantic_context = ""
+                try:
+                    if plan["strategy"] != "direct":
+                        yield "[[STATUS:Searching memory...]]"
+                        event_bus.emit("brain", "thought", {"request_id": request_id, "thought": "Analyzing context."})
+                        semantic_context = await memory_manager.get_relevant_context(user_input, limit=2)
+                except Exception as re:
+                    logger.warning(f"Memory retrieval failure: {re}")
+                    event_bus.emit("brain", "retrieval_failure", {"request_id": request_id})
+
+                # 5. Tool Orchestration (Phase 3: Resilience)
                 tool_results = None
-                if intent in ["tool_execution", "routing_needed"]:
-                    yield "[[STATUS:Checking tools...]]"
-                    tool_start = time.time()
-                    tool_results = await tool_orchestrator.check_and_execute_tools(user_input, request_id)
-                    metrics["tool_ms"] = int((time.time() - tool_start) * 1000)
-                    if tool_results:
-                        combined_context += f"\n\n[TOOL_RESULT]\n{tool_results}"
-                        yield f"🤖 *Executing system tool...*\n\n"
+                if plan["strategy"] == "reasoning_graph":
+                    try:
+                        yield "[[STATUS:Orchestrating...]]"
+                        event_bus.emit("brain", "thought", {"request_id": request_id, "thought": "Executing graph reasoning."})
+                        tool_results = await tool_orchestrator.check_and_execute_tools(user_input, request_id)
+                        if tool_results:
+                            event_bus.emit("brain", "tool_result", {"request_id": request_id, "result": tool_results[:200]})
+                    except Exception as te:
+                        logger.error(f"Reasoning Graph failure: {te}")
+                        event_bus.emit("brain", "orchestration_fallback", {"request_id": request_id, "error": str(te)})
+                        tool_results = f"Warning: I encountered an error while using my tools ({str(te)}). I will proceed with my current knowledge."
 
                 # 6. Generation Setup
                 yield "[[STATUS:Thinking...]]"
-                system_prompt = PromptManager.get_system_prompt(intent)
-                final_prompt = PromptManager.format_user_prompt(user_input, combined_context)
+                event_bus.emit("brain", "thought", {"request_id": request_id, "thought": "Finalizing response."})
                 
-                options = {"temperature": 0.6, "num_predict": 256}
+                system_prompt = PromptManager.get_system_prompt(intent)
+                
+                # Active Session State: Inject continuous context
+                from memory.session_state import session_state_manager
+                session_state = session_state_manager.get_session(session_id)
+                active_context = session_state.get_context_string()
+                
+                messages = [{"role": "system", "content": system_prompt}]
+                
+                if active_context:
+                    messages.append({"role": "system", "content": f"ACTIVE SESSION STATE:\n{active_context}"})
+                
+                # Scratchpad (Phase 3: Internal Scratchpad)
+                if plan["require_scratchpad"]:
+                    scratchpad_context = f"INTERNAL PLAN:\nComplexity: {plan['complexity']}\nStrategy: {plan['strategy']}\nBudget: {plan['latency_budget']}s"
+                    messages.append({"role": "system", "content": f"SCRATCHPAD (Hidden Reasoning):\n{scratchpad_context}"})
+                
+                if semantic_context:
+                    messages.append({"role": "system", "content": f"RELEVANT PAST KNOWLEDGE:\n{semantic_context}"})
+                
+                # History Trimming
+                for m in past_msgs[-window_size:]:
+                    role = "assistant" if m['sender'] == 'friday' else "user"
+                    messages.append({"role": role, "content": m['text'][:500]})
+                    
+                current_msg = user_input
+                if tool_results:
+                    current_msg += f"\n\n[TOOL_RESULT]\n{tool_results}"
+                
+                messages.append({"role": "user", "content": current_msg})
+                
+                options = {"temperature": 0.4, "num_predict": 120}
                 if intent == "memory_save":
                     options["temperature"] = 0.3
                 
-                # 7. Token Streaming
-                llm_start = time.time()
+                # 7. Response Streaming
                 full_response = ""
-                async for token in self.llm.generate_stream(final_prompt, system_prompt, request_id, options):
+                token_count = 0
+                gen_start = time.time()
+                
+                async for token in self.llm.generate_stream(messages, options=options, request_id=request_id):
+                    if not metrics.get("first_token_ms"):
+                        metrics["first_token_ms"] = int((time.time() - gen_start) * 1000)
+                    
                     full_response += token
+                    token_count += 1
                     yield token
                 
-                metrics["generation_ms"] = int((time.time() - llm_start) * 1000)
+                metrics["generation_ms"] = int((time.time() - gen_start) * 1000)
+                metrics["token_count"] = token_count
                 
-                # 8. Post-Processing (Background)
-                # Using task_manager for robust background execution
+                event_bus.emit("brain", "planning_finished", {"request_id": request_id, "status": "success"})
+                
+                # Update Session State with results
+                session_state.update_from_interaction(user_input, full_response, intent)
+                
+                # 8. Post-Processing & Persistence
+                metrics["total_ms"] = int((time.time() - start_time) * 1000)
                 await task_manager.run_task(f"save_friday_msg_{request_id}", asyncio.to_thread(save_message, session_id, "friday", full_response))
                 await task_manager.run_task(f"store_user_mem_{request_id}", memory_manager.extract_and_store_memory(user_input, "user", session_id))
                 await task_manager.run_task(f"store_friday_mem_{request_id}", memory_manager.extract_and_store_memory(full_response, "friday", session_id))
@@ -130,7 +171,12 @@ class Orchestrator:
 
                 metrics["total_ms"] = int((time.time() - start_time) * 1000)
                 logger.info(f"[REQ:{request_id}] Completed in {metrics['total_ms']}ms. Intent: {intent}")
-                yield f"\n\n[[METRICS:{json.dumps(metrics)}]]"
+                
+                # Production Telemetry: Record and persist metrics
+                from core.metrics_manager import metrics_manager
+                metrics_manager.record_request(metrics)
+                
+                yield f"[[METRICS:{json.dumps(metrics)}]]"
                 
             except GeneratorExit:
                 logger.warning(f"[REQ:{request_id}] Client disconnected. Cancelling stream.")

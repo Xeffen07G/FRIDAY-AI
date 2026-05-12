@@ -2,9 +2,9 @@ import os
 import httpx
 import sqlite3
 import logging
-from backend.config.settings import settings
-from backend.core.logger import get_logger
-from backend.memory.database import backup_database
+from config.settings import settings
+from core.logger import get_logger
+from memory.database import backup_database
 
 logger = get_logger("core.validator")
 
@@ -35,25 +35,42 @@ class StartupValidator:
             logger.error(f"SQLite database: CORRUPT OR MISSING - {e}")
             return False
 
-        # 3. Check Ollama Accessibility
-        async with httpx.AsyncClient(timeout=2.0) as client:
+        # 3. Check Dependencies (FFMPEG / Piper)
+        import shutil
+        if not shutil.which("ffmpeg"):
+            logger.error("FFMPEG: NOT FOUND in PATH. Realtime audio will fail.")
+            # return False # Fail hard if critical
+        else:
+            logger.info("FFMPEG: READY")
+            
+        piper_path = os.path.join(os.getcwd(), "piper.exe")
+        if not os.path.exists(piper_path):
+            logger.warning(f"PIPER TTS: NOT FOUND at {piper_path}. Voice response will be disabled.")
+        else:
+            logger.info("PIPER TTS: READY")
+
+        # 4. Check Ollama Accessibility
+        async with httpx.AsyncClient(timeout=3.0) as client:
             try:
                 response = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
                 if response.status_code == 200:
                     logger.info("Ollama Service: REACHABLE")
                     
-                    # 4. Check if model exists
                     models = [m["name"] for m in response.json().get("models", [])]
                     if any(settings.MODEL_NAME in m for m in models):
-                        logger.info(f"Model '{settings.MODEL_NAME}': READY")
+                        logger.info(f"Primary Model '{settings.MODEL_NAME}': READY")
                     else:
-                        logger.error(f"Model '{settings.MODEL_NAME}': NOT FOUND. Run 'ollama pull {settings.MODEL_NAME}'")
-                        # We don't fail here, but we warn
+                        logger.error(f"Primary Model '{settings.MODEL_NAME}': NOT FOUND. Run 'ollama pull {settings.MODEL_NAME}'")
                 else:
-                    logger.error(f"Ollama Service: UNEXPECTED STATUS {response.status_code}")
+                    logger.error(f"Ollama Service: ERROR STATUS {response.status_code}")
             except Exception as e:
                 logger.error(f"Ollama Service: UNREACHABLE - {e}")
-                # We don't fail hard, but F.R.I.D.A.Y will be limited
+
+        # 5. Check Environment Secrets
+        required_keys = ["TAVILY_API_KEY"]
+        for key in required_keys:
+            if not os.getenv(key):
+                logger.warning(f"Production Key '{key}': MISSING. Some tools will be restricted.")
 
         logger.info("System integrity validation complete.")
         return True

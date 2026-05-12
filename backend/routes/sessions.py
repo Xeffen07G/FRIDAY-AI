@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from backend.memory.database import get_all_sessions, create_session, get_messages
+from memory.database import get_all_sessions, create_session, get_messages
 
 router = APIRouter()
 
@@ -27,7 +27,7 @@ class SessionUpdate(BaseModel):
 
 @router.delete("/{session_id}")
 def delete_chat_session(session_id: str):
-    from backend.memory.database import session_exists, delete_session
+    from memory.database import session_exists, delete_session
     if not session_exists(session_id):
         raise HTTPException(status_code=404, detail="Session not found")
     delete_session(session_id)
@@ -35,7 +35,7 @@ def delete_chat_session(session_id: str):
 
 @router.put("/{session_id}")
 def update_chat_session(session_id: str, req: SessionUpdate):
-    from backend.memory.database import session_exists, update_session_title
+    from memory.database import session_exists, update_session_title
     if not session_exists(session_id):
         raise HTTPException(status_code=404, detail="Session not found")
     update_session_title(session_id, req.title)

@@ -1,4 +1,4 @@
-from backend.core.system_prompt import SystemPrompt
+from core.system_prompt import SystemPrompt
 
 class PromptManager:
     """Orchestrates final prompt assembly using the centralized SystemPrompt layer."""

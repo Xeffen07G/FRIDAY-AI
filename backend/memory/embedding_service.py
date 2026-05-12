@@ -2,7 +2,7 @@ import asyncio
 from sentence_transformers import SentenceTransformer
 import os
 from functools import lru_cache
-from backend.core.logger import get_logger
+from core.logger import get_logger
 
 logger = get_logger("memory.embedding")
 

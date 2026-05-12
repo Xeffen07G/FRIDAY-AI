@@ -1,4 +1,4 @@
-from backend.tools.base_tool import BaseTool
+from tools.base_tool import BaseTool
 import subprocess
 import logging
 
@@ -7,6 +7,7 @@ logger = logging.getLogger("friday.tools.terminal")
 class TerminalTool(BaseTool):
     name = "terminal"
     description = "Executes safe shell commands. Use ONLY for reading system state (e.g. dir, ping). Do NOT execute destructive commands."
+    requires_confirmation = True
     parameters = {
         "command": "The shell command string to execute."
     }

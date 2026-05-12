@@ -3,7 +3,7 @@ import os
 import uuid
 import time
 from datetime import datetime
-from backend.core.logger import get_logger
+from core.logger import get_logger
 
 logger = get_logger("memory.database")
 

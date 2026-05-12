@@ -2,7 +2,7 @@ import asyncio
 import uuid
 import time
 from typing import Dict, Any, Callable, Coroutine
-from backend.core.logger import get_logger
+from core.logger import get_logger
 
 logger = get_logger("core.task_manager")
 
@@ -81,5 +81,44 @@ class TaskManager:
             ]
         }
 
-# Global task manager instance
+class BackgroundAgent:
+    """Persistent agent runtime for background objectives and proactive checks."""
+    def __init__(self, manager: TaskManager):
+        self.manager = manager
+        self.is_running = False
+        self._loop_task: asyncio.Task = None
+        self.proactive_queue = asyncio.Queue()
+
+    async def start(self):
+        if self.is_running: return
+        self.is_running = True
+        self._loop_task = asyncio.create_task(self._agent_loop())
+        logger.info("BackgroundAgent Runtime: STARTED")
+
+    async def stop(self):
+        self.is_running = False
+        if self._loop_task:
+            self._loop_task.cancel()
+        logger.info("BackgroundAgent Runtime: STOPPED")
+
+    async def _agent_loop(self):
+        while self.is_running:
+            try:
+                # Proactive objectives: 1. Monitor active tasks, 2. Check for reminders, 3. Idle processing
+                await self._check_task_health()
+                await asyncio.sleep(60) # Run every minute
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Agent loop error: {e}")
+                await asyncio.sleep(10)
+
+    async def _check_task_health(self):
+        diag = self.manager.get_diagnostics()
+        if diag["active_count"] > 10:
+            logger.warning(f"High task load detected: {diag['active_count']} tasks active.")
+
+# Global instances
 task_manager = TaskManager()
+background_agent = BackgroundAgent(task_manager)
+

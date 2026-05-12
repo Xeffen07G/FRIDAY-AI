@@ -1,8 +1,8 @@
 import httpx
 import json
 import asyncio
-from backend.config.settings import settings
-from backend.core.logger import get_logger
+from config.settings import settings
+from core.logger import get_logger
 
 logger = get_logger("llm")
 
@@ -14,29 +14,37 @@ class LLMClient:
         self.retry_count = settings.OLLAMA_RETRY_COUNT
         self.timeout = settings.OLLAMA_TIMEOUT
         
-    async def generate_json(self, prompt: str, system: str = None, request_id: str = "UNKNOWN", timeout: int = 5):
-        """Sends an async request to Ollama requesting strict JSON output with retry logic."""
+    async def generate_json(self, prompt: str, system: str = None, request_id: str = "UNKNOWN", timeout: int = 5, retries: int = None):
+        """Sends an async request to Ollama requesting strict JSON output."""
+        max_attempts = retries if retries is not None else self.retry_count
         attempts = 0
         async with httpx.AsyncClient(timeout=timeout) as client:
-            while attempts <= self.retry_count:
+            while attempts <= max_attempts:
                 try:
                     payload = {
                         "model": self.model,
-                        "prompt": prompt,
+                        "messages": [],
                         "stream": False,
                         "format": "json",
-                        "options": {"temperature": 0.0, "num_predict": 128}
+                        "options": {
+                            "temperature": 0.0, 
+                            "num_predict": 128,
+                            "num_thread": 8,
+                            "num_ctx": 2048,
+                            "repeat_penalty": 1.1
+                        }
                     }
                     if system:
-                        payload["system"] = system
+                        payload["messages"].append({"role": "system", "content": system})
+                    payload["messages"].append({"role": "user", "content": prompt})
                         
                     response = await client.post(
-                        f"{self.base_url}/api/generate",
+                        f"{self.base_url}/api/chat",
                         json=payload
                     )
                     
                     if response.status_code == 200:
-                        return response.json().get("response", "{}")
+                        return response.json().get("message", {}).get("content", "{}")
                     
                     logger.warning(f"[REQ:{request_id}] JSON Attempt {attempts+1} failed with status {response.status_code}")
                     
@@ -49,36 +57,43 @@ class LLMClient:
                     
             return "{}"
 
-    async def generate_stream(self, prompt: str, system: str = None, request_id: str = "UNKNOWN", options: dict = None):
+    async def generate_stream(self, messages: list, options: dict = None, request_id: str = "UNKNOWN"):
         """
-        Sends a prompt to Ollama and streams the response back asynchronously.
-        Includes graceful fallback if Ollama is unreachable.
+        Sends an array of messages to Ollama's Chat API and streams the response back.
+        Using native message arrays prevents prompt leakage and improves instruction following.
         """
         try:
-            final_options = {"temperature": 0.7, "num_predict": 512, "stop": ["User:", "Assistant:"]}
+            final_options = {
+                "temperature": 0.7, 
+                "num_predict": 256, 
+                "stop": ["User:", "Assistant:"],
+                "num_thread": 8,
+                "num_ctx": 4096,
+                "repeat_penalty": 1.2,
+                "top_k": 20,
+                "top_p": 0.9
+            }
             if options:
                 final_options.update(options)
-                
+
             payload = {
                 "model": self.model,
-                "prompt": prompt,
+                "messages": messages,
                 "stream": True,
                 "options": final_options
             }
-            if system:
-                payload["system"] = system
                 
-            logger.info(f"[REQ:{request_id}] Initiating Ollama stream for model: {self.model}")
+            logger.info(f"[REQ:{request_id}] Initiating Ollama Chat stream for model: {self.model}")
             
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                async with client.stream("POST", f"{self.base_url}/api/generate", json=payload) as response:
+                async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
                     if response.status_code == 200:
                         async for line in response.aiter_lines():
                             if line:
                                 try:
                                     data = json.loads(line)
-                                    if "response" in data:
-                                        yield data["response"]
+                                    if "message" in data and "content" in data["message"]:
+                                        yield data["message"]["content"]
                                     if data.get("done"):
                                         break
                                 except json.JSONDecodeError:

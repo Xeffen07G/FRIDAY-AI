@@ -1,66 +1,42 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# Source Code Only - Production Hygiene
+# ====================================
 
-# Virtual Environments
+# Runtime Artifacts (Externalized to AI_RUNTIME)
+*.db
+*.db.bak
+*.sqlite3
+chroma_db/
+vector_store/
+temp/
+logs/
+*.log
+
+# Build & Dependency Artifacts
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+build/
 venv/
 .venv/
 env/
-ENV/
-env.bak/
-venv.bak/
-
-# Databases & Persistence
-*.db
-*.sqlite3
-backend/memory/chroma_db/
-backend/memory/vector_store/
-
-# Logs
-*.log
-
-# Frontend (Node/Vite)
-node_modules/
-frontend/node_modules/
-frontend/dist/
+*.py[cod]
+__pycache__/
+.pytest_cache/
 .eslintcache
-.stylelintcache
-*.local
 
-# Environment
+# Environment & Secrets
 .env
 .env.*
+!.env.example
 
 # IDEs & Editors
 .vscode/
 .idea/
 *.swp
 *.swo
-.project
-.pydevproject
-.settings/
 
-# OS
+# OS Artifacts
 .DS_Store
 Thumbs.db
 Desktop.ini

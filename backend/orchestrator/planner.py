@@ -1,6 +1,6 @@
 import json
 import logging
-from backend.llm.ollama_client import LLMClient
+from llm.ollama_client import LLMClient
 
 logger = logging.getLogger("friday.planner")
 

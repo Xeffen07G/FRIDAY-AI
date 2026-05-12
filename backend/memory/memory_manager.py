@@ -3,120 +3,107 @@ import logging
 import re
 import time
 from datetime import datetime
-from backend.memory.embedding_service import embedding_service
-from backend.memory.vector_store import vector_store
-from backend.config.settings import settings
+from memory.embedding_service import embedding_service
+from memory.vector_store import vector_store
+from config.settings import settings
 
 logger = logging.getLogger("friday.memory.manager")
 
 class MemoryManager:
-    """Advanced Memory System with duplicate detection and importance scoring."""
+    """Hierarchical Cognitive Memory System with decay and compression."""
 
     def __init__(self):
-        logger.info("MemoryManager initialized.")
+        logger.info("Cognitive Memory System initialized.")
         self.category_patterns = {
-            "preference": re.compile(r"(like|love|prefer|favourite|favorite|hate|enjoy|dislike|don't like|do not like)", re.IGNORECASE),
-            "personal": re.compile(r"(i am|my name|i live|i work|i am a|i was born|my birthday|my age)", re.IGNORECASE),
-            "learning": re.compile(r"(learning|studying|reading|practicing|tutorial|course|degree|major)", re.IGNORECASE),
-            "goal": re.compile(r"(my goal|i want to|i aim to|target|aspiration|dream|objective)", re.IGNORECASE),
-            "project": re.compile(r"(building|creating|developing|coding|project|app|software)", re.IGNORECASE),
-            "relationship": re.compile(r"(my wife|my husband|my friend|my boss|my colleague|my parent|my sibling)", re.IGNORECASE),
-            "entertainment": re.compile(r"(movie|game|music|book|hobby|sport|team|band)", re.IGNORECASE),
-            "location": re.compile(r"(travel|visit|went to|from|lives in|city|country)", re.IGNORECASE)
+            "profile": re.compile(r"(i am|my name|i live|i work|i am a|i was born|my birthday|my age|my goal|my preference|i like|i hate)", re.IGNORECASE),
+            "episodic": re.compile(r"(remember when|last time|yesterday|earlier|previously|the other day)", re.IGNORECASE),
+            "semantic": re.compile(r"(is a|definition|what is|how does|fact|knowledge|concept)", re.IGNORECASE),
+            "project": re.compile(r"(building|creating|developing|coding|project|app|software|task)", re.IGNORECASE)
         }
 
-    def _determine_category(self, text: str) -> str:
-        for cat, pattern in self.category_patterns.items():
-            if pattern.search(text):
-                return cat
-        return "context"
+    def _determine_type(self, text: str) -> str:
+        """Determines if memory is 'working', 'episodic', 'semantic', or 'profile'."""
+        lower_text = text.lower()
+        for m_type, pattern in self.category_patterns.items():
+            if pattern.search(lower_text):
+                return m_type
+        return "working"
 
     async def extract_and_store_memory(self, text: str, role: str, session_id: str):
-        """Extracts and stores unique semantic memories with periodic cleanup."""
+        """Extracts and stores unique memories with importance-based decay."""
         clean_text = text.strip()
-        if len(clean_text) < 12:
-            return False
+        if len(clean_text) < 15: return False
             
         try:
-            # Periodic cleanup (every 20 stores approximately)
-            if hasattr(self, '_store_count'):
-                self._store_count += 1
-            else:
-                self._store_count = 1
-                
-            if self._store_count % 20 == 0:
-                self.cleanup_old_memories()
-
             embedding = await embedding_service.get_embedding(clean_text)
-            if not embedding:
-                return False
+            if not embedding: return False
 
-            # 1. Duplicate/Similarity Check (Prevent redundant memories)
+            # Similarity Check (Deduplication)
             existing = vector_store.search_memories(embedding, n_results=1)
-            if existing and existing[0].get("distance", 1.0) < 0.2:
-                logger.info(f"Memory Duplicate Detected (dist={existing[0]['distance']:.4f}). Skipping storage.")
+            if existing and existing[0].get("distance", 1.0) < 0.15:
+                logger.debug("Redundant memory suppressed.")
                 return False
 
-            # 2. Importance Scoring (Enhanced heuristic)
-            importance = 1.0
-            high_priority = ["always", "never", "important", "essential", "must", "critical", "secret", "private"]
-            medium_priority = ["usually", "often", "prefer", "like", "love", "hate", "goal", "target"]
+            m_type = self._determine_type(clean_text)
             
-            clean_lower = clean_text.lower()
-            if any(word in clean_lower for word in high_priority):
-                importance = 2.5
-            elif any(word in clean_lower for word in medium_priority):
-                importance = 1.8
-            elif len(clean_text) > 200: # Long detailed context
-                importance = 1.5
+            # Base importance by type
+            importance_map = {"profile": 3.0, "project": 2.2, "semantic": 1.8, "episodic": 1.5, "working": 1.0}
+            importance = importance_map.get(m_type, 1.0)
+            
+            # Contextual reinforcement
+            if any(word in clean_text.lower() for word in ["important", "remember", "never forget", "critical"]):
+                importance += 1.0
 
             memory_id = str(uuid.uuid4())
-            now = datetime.now().isoformat()
-            category = self._determine_category(clean_text)
+            now = datetime.now()
             
             metadata = {
                 "session_id": session_id,
                 "role": role,
-                "created_at": now,
-                "category": category,
-                "pinned": False,
-                "importance": importance
+                "created_at": now.isoformat(),
+                "type": m_type,
+                "importance": importance,
+                "access_count": 1,
+                "last_accessed": now.isoformat(),
+                "decay_rate": 0.05 if m_type == "working" else 0.01
             }
 
             return vector_store.add_memory(memory_id, clean_text, embedding, metadata)
         except Exception as e:
-            logger.error(f"Failed to store memory: {e}")
+            logger.error(f"Memory extraction failed: {e}")
             return False
 
-    def cleanup_old_memories(self, max_memories: int = 1000):
-        """
-        Prunes old, low-importance memories to keep the vector store efficient.
-        """
+    def run_memory_decay(self, max_memories: int = 2000):
+        """Prunes low-importance memories that have aged/decayed."""
         try:
             all_memories = vector_store.get_all_memories()
-            if len(all_memories) <= max_memories:
-                return
+            if len(all_memories) <= max_memories: return
+
+            now = datetime.now()
+            scored_memories = []
             
-            logger.info(f"Starting memory cleanup. Current count: {len(all_memories)}")
+            for m in all_memories:
+                meta = m["metadata"]
+                created_at = datetime.fromisoformat(meta["created_at"])
+                age_days = (now - created_at).days
+                
+                # Decay Formula: base_importance - (age * decay_rate) + (log(access_count))
+                import math
+                access_count = meta.get("access_count", 1)
+                decay_rate = meta.get("decay_rate", 0.02)
+                
+                final_score = meta["importance"] - (age_days * decay_rate) + (math.log(access_count) * 0.2)
+                scored_memories.append((final_score, m["id"]))
+
+            scored_memories.sort(key=lambda x: x[0])
+            to_delete = scored_memories[:len(all_memories) - max_memories]
             
-            # Sort by: 1. Pinned (keep), 2. Importance (desc), 3. Recency (desc)
-            # We want to delete the ones at the end of this list
-            def sort_key(m):
-                pinned = m["metadata"].get("pinned", False)
-                importance = m["metadata"].get("importance", 1.0)
-                created_at = m["metadata"].get("created_at", "1970-01-01")
-                return (pinned, importance, created_at)
+            for score, mid in to_delete:
+                vector_store.delete_memory(mid)
             
-            all_memories.sort(key=sort_key, reverse=True)
-            
-            # Identify candidates for deletion (the bottom ones)
-            to_delete = all_memories[max_memories:]
-            for mem in to_delete:
-                vector_store.delete_memory(mem["id"])
-            
-            logger.info(f"Memory cleanup complete. Deleted {len(to_delete)} memories.")
+            logger.info(f"Decay Engine: Pruned {len(to_delete)} stale memories.")
         except Exception as e:
-            logger.error(f"Memory cleanup failed: {e}")
+            logger.error(f"Memory decay failed: {e}")
 
     async def get_relevant_context(self, query: str, limit: int = 3):
         """Retrieves ranked relevant context."""
@@ -139,30 +126,44 @@ class MemoryManager:
             if not filtered_results:
                 return ""
 
-            # Rank by Distance + Importance + Recency
+            # Rank by Distance + Importance + Recency + Type Boost
             now_ts = time.time()
             ranked_results = []
             for mem in filtered_results:
                 try:
+                    meta = mem["metadata"]
                     # Importance boost
-                    importance = float(mem["metadata"].get("importance", 1.0))
-                    imp_boost = (importance - 1.0) * -0.1 # Lower distance is better
+                    importance = float(meta.get("importance", 1.0))
+                    imp_boost = (importance - 1.0) * -0.15 # Lower distance is better
                     
-                    # Recency penalty
-                    created_at = datetime.fromisoformat(mem["metadata"]["created_at"])
+                    # Type boost
+                    m_type = meta.get("type", "working")
+                    type_boost = -0.1 if m_type in ["profile", "project"] else 0
+                    
+                    # Recency penalty (less severe for profile/semantic)
+                    created_at = datetime.fromisoformat(meta["created_at"])
                     age_days = (datetime.now() - created_at).days
-                    recency_penalty = min(0.2, age_days * 0.005)
+                    age_factor = 0.002 if m_type in ["profile", "semantic"] else 0.01
+                    recency_penalty = min(0.3, age_days * age_factor)
                 except:
-                    imp_boost = 0
-                    recency_penalty = 0
+                    imp_boost, type_boost, recency_penalty = 0, 0, 0
 
-                final_score = mem["distance"] + imp_boost + recency_penalty
+                final_score = mem["distance"] + imp_boost + type_boost + recency_penalty
                 ranked_results.append((final_score, mem))
 
             ranked_results.sort(key=lambda x: x[0])
             top_memories = [x[1] for x in ranked_results[:limit]]
             
-            return "\n".join([f"[{m['metadata'].get('category', 'context').upper()}] {m['text']}" for m in top_memories])
+            # Update access count for retrieved memories (Heat mapping)
+            for m in top_memories:
+                mid = m["id"]
+                try:
+                    m["metadata"]["access_count"] = m["metadata"].get("access_count", 0) + 1
+                    m["metadata"]["last_accessed"] = datetime.now().isoformat()
+                    vector_store.update_metadata(mid, m["metadata"])
+                except: pass
+
+            return "\n".join([f"[{m['metadata'].get('type', 'working').upper()}] {m['text']}" for m in top_memories])
             
         except Exception as e:
             logger.error(f"Retrieval failed: {e}")
@@ -177,7 +178,7 @@ class MemoryManager:
             # Prepare transcript for LLM
             transcript = "\n".join([f"{'Assistant' if m['sender']=='friday' else 'User'}: {m['text']}" for m in messages])
             
-            from backend.llm.ollama_client import LLMClient
+            from llm.ollama_client import LLMClient
             llm = LLMClient()
             
             system_prompt = "You are a master of semantic memory. Summarize the following conversation into a concise 'fact-based' summary of what was discussed, what the user's goals were, and any key personal info revealed. Keep it under 150 words."

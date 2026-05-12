@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API_CONFIG } from '../config/api';
 
 export default function DiagnosticsPanel({ isOpen, onClose }) {
   const [data, setData] = useState(null);
@@ -7,7 +8,8 @@ export default function DiagnosticsPanel({ isOpen, onClose }) {
   const fetchHealth = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/health');
+      const res = await fetch(API_CONFIG.ENDPOINTS.HEALTH);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
     } catch (err) {
@@ -47,19 +49,19 @@ export default function DiagnosticsPanel({ isOpen, onClose }) {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
                   <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">System RAM</p>
-                  <p className="text-xl font-bold text-slate-200">{data.system.ram_percent}%</p>
+                  <p className="text-xl font-bold text-slate-200">{data?.system?.ram_percent || '0'}%</p>
                 </div>
                 <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
                   <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">FRIDAY RAM</p>
-                  <p className="text-xl font-bold text-slate-200">{data.system.friday_ram_mb} MB</p>
+                  <p className="text-xl font-bold text-slate-200">{data?.system?.friday_ram_mb || '0'} MB</p>
                 </div>
                 <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
                   <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">Active Tasks</p>
-                  <p className="text-xl font-bold text-blue-400">{data.tasks.active_count}</p>
+                  <p className="text-xl font-bold text-blue-400">{data?.tasks?.active_count || '0'}</p>
                 </div>
                 <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
                   <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">Models</p>
-                  <p className="text-xl font-bold text-emerald-400">{data.models.active_models.length}</p>
+                  <p className="text-xl font-bold text-emerald-400">{data?.models?.active_models?.length || '0'}</p>
                 </div>
               </div>
 
@@ -67,7 +69,7 @@ export default function DiagnosticsPanel({ isOpen, onClose }) {
               <div>
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Active Async Tasks</h3>
                 <div className="space-y-2">
-                  {data.tasks.tasks.length > 0 ? (
+                  {data?.tasks?.tasks && data.tasks.tasks.length > 0 ? (
                     data.tasks.tasks.map(task => (
                       <div key={task.id} className="flex items-center justify-between p-3 bg-slate-950/50 rounded-lg border border-slate-800/50 font-mono text-[11px]">
                         <div className="flex items-center gap-3">
@@ -76,7 +78,7 @@ export default function DiagnosticsPanel({ isOpen, onClose }) {
                           </span>
                           <span className="text-slate-300">{task.name}</span>
                         </div>
-                        <span className="text-slate-500">{task.age.toFixed(1)}s</span>
+                        <span className="text-slate-500">{task.age?.toFixed(1) || '0'}s</span>
                       </div>
                     ))
                   ) : (
@@ -89,11 +91,11 @@ export default function DiagnosticsPanel({ isOpen, onClose }) {
               <div>
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Ollama Runtime</h3>
                 <div className="space-y-2">
-                  {data.models.active_models.length > 0 ? (
+                  {data?.models?.active_models && data.models.active_models.length > 0 ? (
                     data.models.active_models.map(model => (
                       <div key={model} className="flex items-center justify-between p-3 bg-slate-950/50 rounded-lg border border-slate-800/50 font-mono text-[11px]">
                         <span className="text-emerald-400 font-bold">{model}</span>
-                        <span className="text-slate-500">LAST USED: {data.models.last_used[model] || 'N/A'}</span>
+                        <span className="text-slate-500">LAST USED: {data?.models?.last_used?.[model] || 'N/A'}</span>
                       </div>
                     ))
                   ) : (

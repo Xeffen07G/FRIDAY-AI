@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File
-from backend.vision.vision_orchestrator import vision_orchestrator
+from vision.vision_orchestrator import vision_orchestrator
 
 router = APIRouter()
 

@@ -1,9 +1,12 @@
 import chromadb
 
+from config.settings import settings
+
 class VectorMemory:
     """Handles semantic search and long-term project memory using ChromaDB."""
-    def __init__(self, persist_dir="./chroma_db"):
-        self.client = chromadb.PersistentClient(path=persist_dir)
+    def __init__(self, persist_dir=None):
+        path = persist_dir or settings.CHROMA_PATH
+        self.client = chromadb.PersistentClient(path=path)
         self.collection = self.client.get_or_create_collection(name="friday_memory")
         
     def add_memory(self, text: str, metadata: dict = None, memory_id: str = None):

@@ -1,6 +1,6 @@
 import logging
 import sys
-from backend.config.settings import settings
+from config.settings import settings
 
 def setup_logging():
     """Initializes a structured logging system."""
@@ -11,7 +11,8 @@ def setup_logging():
         level=log_level,
         format=settings.LOG_FORMAT,
         handlers=[
-            logging.StreamHandler(sys.stdout)
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler(settings.LOG_FILE_PATH)
         ]
     )
     

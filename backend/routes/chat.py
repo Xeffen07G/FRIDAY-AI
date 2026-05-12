@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from backend.orchestrator.orchestrator import friday_orchestrator
-from backend.memory.database import session_exists
-from backend.core.logger import get_logger
+from orchestrator.orchestrator import friday_orchestrator
+from memory.database import session_exists
+from core.logger import get_logger
 import uuid
 import time
 

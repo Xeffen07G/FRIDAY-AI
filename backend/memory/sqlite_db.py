@@ -1,10 +1,13 @@
 import sqlite3
 from datetime import datetime
 
+from config.settings import settings
+
 class SQLiteMemory:
     """Handles short-term and persistent conversational memory."""
-    def __init__(self, db_path="friday_memory.db"):
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
+    def __init__(self, db_path=None):
+        path = db_path or settings.SQLITE_PATH
+        self.conn = sqlite3.connect(path, check_same_thread=False)
         self.cursor = self.conn.cursor()
         self._create_tables()
         

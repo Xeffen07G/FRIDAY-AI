@@ -2,9 +2,9 @@ import json
 import asyncio
 import time
 import re
-from backend.tools.tool_registry import tool_registry
-from backend.llm.ollama_client import LLMClient
-from backend.core.logger import get_logger
+from tools.tool_registry import tool_registry
+from llm.ollama_client import LLMClient
+from core.logger import get_logger
 
 logger = get_logger("tools.orchestrator")
 
@@ -39,12 +39,16 @@ class ToolOrchestrator:
         # 3. Tool-specific keywords
         tool_keywords = {
             "calculator": ["calc", "math", "plus", "minus", "multiplied", "divided"],
-            "terminal": ["run command", "terminal", "shell", "execute", "list files", "mkdir"],
+            "terminal": ["run command", "terminal", "shell", "execute", "mkdir"],
             "file": ["read file", "write to file", "filesystem", "save to"],
-            "system": ["system info", "cpu", "memory usage", "disk space"]
+            "system_info": ["system info", "cpu", "memory usage", "disk space"],
+            "web_search": ["news", "latest", "recent", "today", "current", "headlines", "sport", "search", "google", "find out"],
+            "weather_lookup": ["weather", "temperature", "forecast", "rain", "snow", "sunny"],
+            "system_action": ["open", "launch", "list files", "ls", "dir", "status"],
+            "screen_perception": ["screenshot", "screen", "capture", "see my desktop", "what am i looking at", "explain this error"]
         }
         
-        for intent, keywords in tool_keywords.items():
+        for tool_name, keywords in tool_keywords.items():
             if any(k in clean_prompt for k in keywords):
                 return "tool_execution"
                 
@@ -66,9 +70,9 @@ Rules:
 2. No explanation."""
         
         try:
-            logger.info(f"[REQ:{request_id}] Calling LLM for tool routing (2s cap).")
-            # We await the async generate_json
-            response = await self.llm.generate_json(user_prompt, system=system_prompt, request_id=request_id, timeout=3)
+            logger.info(f"[REQ:{request_id}] Calling LLM for tool routing (fast fail).")
+            # We await the async generate_json without retries
+            response = await self.llm.generate_json(user_prompt, system=system_prompt, request_id=request_id, timeout=3, retries=0)
             
             if not response or not response.strip() or response == "{}":
                 return None
@@ -79,7 +83,8 @@ Rules:
             if tool_name and tool_name != "none":
                 logger.info(f"[REQ:{request_id}] Executing tool: {tool_name}")
                 args = data.get("args", {})
-                result = tool_registry.execute_tool(tool_name, args)
+                # CRITICAL: Await the async tool execution
+                result = await tool_registry.execute_tool(tool_name, args)
                 return f"--- TOOL EXECUTION RESULTS ---\nTool: {tool_name}\nResult: {str(result)}\n-----------------------------"
                 
         except Exception as e:

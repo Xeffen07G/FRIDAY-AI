@@ -1,8 +1,8 @@
 import httpx
 import time
 from typing import List, Optional
-from backend.config.settings import settings
-from backend.core.logger import get_logger
+from config.settings import settings
+from core.logger import get_logger
 
 logger = get_logger("core.model_manager")
 

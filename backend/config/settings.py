@@ -7,8 +7,15 @@ class Settings(BaseSettings):
     
     # App Settings
     APP_NAME: str = "F.R.I.D.A.Y. Core"
-    VERSION: str = "1.2.0"
+    VERSION: str = "1.5.0"
     DEBUG: bool = False
+    
+    # Runtime Paths (Production-grade Isolation)
+    RUNTIME_BASE: str = "C:/Users/sayak/AI_RUNTIME"
+    SQLITE_PATH: str = os.path.join(RUNTIME_BASE, "db", "friday_memory.db")
+    CHROMA_PATH: str = os.path.join(RUNTIME_BASE, "chroma")
+    LOG_FILE_PATH: str = os.path.join(RUNTIME_BASE, "logs", "friday.log")
+    TEMP_AUDIO_PATH: str = os.path.join(RUNTIME_BASE, "temp")
     
     # Ollama settings
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
@@ -28,10 +35,11 @@ class Settings(BaseSettings):
     CONTEXT_WINDOW_SIZE: int = 8
     IMPORTANCE_THRESHOLD: float = 0.3
     
-    # Database
-    SQLITE_PATH: str = "friday_memory.db"
-    CHROMA_PATH: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory", "chroma_db")
-
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
+
+# Ensure runtime directories exist upon import
+for path in [os.path.dirname(settings.SQLITE_PATH), settings.CHROMA_PATH, os.path.dirname(settings.LOG_FILE_PATH), settings.TEMP_AUDIO_PATH]:
+    if not os.path.exists(path):
+        os.makedirs(path, exist_ok=True)

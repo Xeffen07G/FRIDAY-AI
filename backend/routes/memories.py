@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Body
-from backend.memory.vector_store import vector_store
+from memory.vector_store import vector_store
 from typing import Dict, Any
 
 router = APIRouter()

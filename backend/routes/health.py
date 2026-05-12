@@ -1,11 +1,11 @@
 from fastapi import APIRouter
 import psutil
 import time
-from backend.core.task_manager import task_manager
-from backend.core.model_manager import model_manager
-from backend.config.settings import settings
+from core.task_manager import task_manager
+from core.model_manager import model_manager
+from config.settings import settings
 
-from backend.memory.vector_store import vector_store
+from memory.vector_store import vector_store
 
 router = APIRouter()
 START_TIME = time.time()

@@ -1,5 +1,5 @@
-from backend.tools.router import ToolRouter
-from backend.core.llm import LLMClient
+from tools.router import ToolRouter
+from core.llm import LLMClient
 
 class Orchestrator:
     def __init__(self):
