@@ -3,35 +3,33 @@ venv/
 __pycache__/
 *.pyc
 
-# Node
-node_modules/
-dist/
-
 # Environment
 .env
+backend/.env
+frontend/.env
 
-# Database
+# Databases
 *.db
+*.db.bak
+chroma_db/
 
-# Logs
-*.log
+# Audio
+*.wav
+*.mp3
 
-# VSCode
-.vscode/
+# Build
+dist/
+build/
+
+# Node
+node_modules/
 
 # OS
 .DS_Store
 Thumbs.db
-# SQLite backups
-*.db.bak
-*.sqlite
-*.sqlite3
 
-# Vector / embedding stores
-chroma/
-vector_db/
-memory/
+# VSCode
+.vscode/
 
-# temp/cache
-tmp/
-.cache/
+# Logs
+*.log
