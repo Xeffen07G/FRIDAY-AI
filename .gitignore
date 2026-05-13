@@ -1,7 +1,8 @@
+# ====================================
 # Source Code Only - Production Hygiene
 # ====================================
 
-# Runtime Artifacts (Externalized to AI_RUNTIME)
+# Runtime Artifacts
 *.db
 *.db.bak
 *.sqlite3
@@ -11,18 +12,23 @@ temp/
 logs/
 *.log
 
-# Build & Dependency Artifacts
-node_modules/
-frontend/node_modules/
-dist/
-frontend/dist/
-build/
+# Python
 venv/
 .venv/
 env/
 *.py[cod]
+*.pyc
 __pycache__/
 .pytest_cache/
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# Build
+dist/
+frontend/dist/
+build/
 .eslintcache
 
 # Environment & Secrets
