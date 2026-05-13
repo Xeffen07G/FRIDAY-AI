@@ -39,7 +39,7 @@ class PlanningEngine:
             complexity = IntentComplexity.AGENTIC
         elif any(t in lower_input for t in self.complex_triggers) or len(user_input) > 100:
             complexity = IntentComplexity.MULTI_STEP
-        elif any(t in lower_input for t in ["search", "weather", "open", "run", "status"]):
+        elif any(t in lower_input for t in ["search", "weather", "open", "run", "status", "time", "date", "clock", "reminder", "summarize"]):
             complexity = IntentComplexity.TOOL_ASSISTED
         elif any(t in lower_input for t in ["remember", "recall", "last time", "preferences"]):
             complexity = IntentComplexity.RETRIEVAL

@@ -1,6 +1,7 @@
 import json
 import asyncio
 import time
+import re
 from llm.ollama_client import LLMClient
 from orchestrator.prompt_manager import PromptManager
 from memory.database import save_message, get_messages, update_session_title
@@ -93,6 +94,24 @@ class Orchestrator:
                 intent = tool_orchestrator.get_intent(user_input)
                 metrics["intent_ms"] = int((time.time() - intent_start) * 1000)
 
+                # HARD DEBUG BYPASS (Task 5)
+                debug_triggers = ["time", "clock", "date"]
+                if any(t in user_input.lower() for t in debug_triggers):
+                    print(f">>> DEBUG [REQ:{request_id}] HARD BYPASS TRIGGERED for {user_input}")
+                    from datetime import datetime
+                    response_text = f"Current time: {datetime.now().strftime('%I:%M %p, %B %d, %Y')}"
+                    
+                    yield "[[STATUS:Finalizing...]]"
+                    yield f"[DETERMINISTIC_RESPONSE] {response_text}"
+                    
+                    metrics["execution_mode"] = "deterministic_bypass"
+                    metrics["llm_bypassed"] = True
+                    metrics["total_ms"] = int((time.time() - start_time) * 1000)
+                    
+                    await task_manager.run_task(f"save_friday_msg_{request_id}", asyncio.to_thread(save_message, session_id, "friday", response_text))
+                    yield f"[[METRICS:{json.dumps(metrics)}]]"
+                    return
+
                 # 4. Planning Phase (Phase 3: Failure Recovery - Graceful Degradation)
                 from core.planner import planner
                 from core.event_bus import event_bus
@@ -127,23 +146,67 @@ class Orchestrator:
                 metrics["retrieval_ms"] = int((time.time() - retrieval_start) * 1000)
 
                 # 5. Tool Orchestration (Phase 3: Resilience)
-                tool_results = None
+                tool_data = None
                 if plan["strategy"] == "reasoning_graph":
                     try:
                         tool_start = time.time()
                         yield "[[STATUS:Orchestrating...]]"
                         event_bus.emit("brain", "thought", {"request_id": request_id, "thought": "Executing graph reasoning."})
-                        tool_results = await tool_orchestrator.check_and_execute_tools(user_input, request_id)
+                        
+                        # DEBUG LOGS
+                        print(f">>> DEBUG [REQ:{request_id}] Strategy: {plan['strategy']}")
+                        print(f">>> DEBUG [REQ:{request_id}] Intent: {intent}")
+                        
+                        tool_data = await tool_orchestrator.check_and_execute_tools(user_input, request_id)
                         metrics["tool_ms"] = int((time.time() - tool_start) * 1000)
-                        if tool_results:
-                            event_bus.emit("brain", "tool_result", {"request_id": request_id, "result": tool_results[:200]})
+                        
+                        if tool_data:
+                            print(f">>> DEBUG [REQ:{request_id}] Tool Selected: {tool_data['tool']}")
+                            metrics["tool_used"] = True
+                            metrics["tool_name"] = tool_data["tool"]
+                            
+                            # DETERMINISTIC BYPASS (Mandatory Architecture Change)
+                            deterministic_tools = ['calculator', 'system_action', 'desktop_agent', 'terminal']
+                            if tool_data["tool"] in deterministic_tools:
+                                print(f">>> DEBUG [REQ:{request_id}] Entering DETERMINISTIC BYPASS")
+                                logger.info(f"[REQ:{request_id}] DETERMINISTIC BYPASS: Returning {tool_data['tool']} result directly.")
+                                yield "[[STATUS:Finalizing...]]"
+                                
+                                # Yield the direct tool result
+                                response_text = tool_data["result"]
+                                if isinstance(response_text, dict):
+                                    response_text = json.dumps(response_text, indent=2)
+                                
+                                # HARD MARKER
+                                yield f"[DETERMINISTIC_RESPONSE] {response_text}"
+                                
+                                # Telemetry & Persistence
+                                metrics["execution_mode"] = "deterministic"
+                                metrics["llm_bypassed"] = True
+                                metrics["total_ms"] = int((time.time() - start_time) * 1000)
+                                
+                                await task_manager.run_task(f"save_friday_msg_{request_id}", asyncio.to_thread(save_message, session_id, "friday", response_text))
+                                yield f"[[METRICS:{json.dumps(metrics)}]]"
+                                return
+                            
+                            event_bus.emit("brain", "tool_result", {"request_id": request_id, "result": tool_data["formatted"][:200]})
+                        else:
+                            print(f">>> DEBUG [REQ:{request_id}] No tool selected by orchestrator")
+                            metrics["tool_used"] = False
+                            metrics["tool_fallback"] = "no_tool_selected"
                     except Exception as te:
                         logger.error(f"Reasoning Graph failure: {te}")
                         event_bus.emit("brain", "orchestration_fallback", {"request_id": request_id, "error": str(te)})
-                        tool_results = f"Warning: I encountered an error while using my tools ({str(te)}). I will proceed with my current knowledge."
+                        tool_data = {"formatted": f"Warning: I encountered an error while using my tools ({str(te)}). I will proceed with my current knowledge."}
 
-                # 6. Generation Setup
+                # 6. Generation Setup (Generative Mode)
+                print(f">>> DEBUG [REQ:{request_id}] Entering GENERATIVE MODE")
+                metrics["execution_mode"] = "generative"
+                metrics["llm_bypassed"] = False
+                
                 yield "[[STATUS:Thinking...]]"
+                # HARD MARKER START
+                yield "[GENERATIVE_RESPONSE] "
                 from core.sanitizer import Sanitizer
                 event_bus.emit("brain", "thought", {"request_id": request_id, "thought": "Finalizing response."})
                 
@@ -177,9 +240,9 @@ class Orchestrator:
                     messages.append({"role": role, "content": m['text'][:500]})
                     
                 current_msg = user_input
-                if tool_results:
+                if tool_data:
                     # Phase 4: Tool Response Sandboxing
-                    safe_tool_results = Sanitizer.sanitize_tool_result(tool_results)
+                    safe_tool_results = Sanitizer.sanitize_tool_result(tool_data["formatted"])
                     current_msg += f"\n\n[TOOL_RESULT]\n{safe_tool_results}"
                 
                 messages.append({"role": "user", "content": current_msg})

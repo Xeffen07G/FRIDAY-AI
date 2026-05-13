@@ -19,6 +19,8 @@ from core.validator import validator
 from core.task_manager import background_agent
 from core.event_bus import event_bus
 from tools.tool_scheduler import tool_scheduler
+from desktop.tray_manager import tray_manager
+from desktop.hotkey_manager import hotkey_manager
 
 # Configure logging
 logger = setup_logging()
@@ -35,6 +37,10 @@ async def lifespan(app: FastAPI):
     await event_bus.start()
     await tool_scheduler.start()
     await background_agent.start()
+    
+    # Start Desktop UX threads
+    tray_manager.start()
+    hotkey_manager.start()
     
     yield
     # Shutdown
@@ -91,12 +97,14 @@ app.include_router(ws_voice_router, tags=["websocket"])
 app.include_router(vision_router, prefix="/api/vision", tags=["vision"])
 app.include_router(observability_router, prefix="/api/observability", tags=["observability"])
 
-@app.get("/")
-def read_root():
-    return {"status": "online", "identity": "F.R.I.D.A.Y."}
-
-@app.post("/api/settings/demo")
-async def toggle_demo_mode(enabled: bool):
-    settings.DEMO_MODE = enabled
-    logger.info(f"DEMO_MODE updated: {settings.DEMO_MODE}")
-    return {"demo_mode": settings.DEMO_MODE}
+if __name__ == "__main__":
+    import uvicorn
+    import sys
+    
+    # Check for silent mode (from Autostart)
+    is_silent = "--silent" in sys.argv
+    if is_silent:
+        logger.info("Starting in SILENT mode (minimized to tray).")
+        # The frontend will handle this by checking the initial event state
+    
+    uvicorn.run(app, host=settings.HOST, port=settings.PORT)

@@ -41,10 +41,10 @@ class ToolOrchestrator:
             "calculator": ["calc", "math", "plus", "minus", "multiplied", "divided"],
             "terminal": ["run command", "terminal", "shell", "execute", "mkdir"],
             "file": ["read file", "write to file", "filesystem", "save to"],
-            "system_info": ["system info", "cpu", "memory usage", "disk space"],
+            "system_info": ["system info", "cpu", "memory usage", "disk space", "time", "date", "clock"],
             "web_search": ["news", "latest", "recent", "today", "current", "headlines", "sport", "search", "google", "find out"],
             "weather_lookup": ["weather", "temperature", "forecast", "rain", "snow", "sunny"],
-            "system_action": ["open", "launch", "list files", "ls", "dir", "status"],
+            "system_action": ["open", "launch", "list files", "ls", "dir", "status", "time", "clock", "date"],
             "screen_perception": ["screenshot", "screen", "capture", "see my desktop", "what am i looking at", "explain this error"]
         }
         
@@ -54,9 +54,10 @@ class ToolOrchestrator:
                 
         return "routing_needed"
 
-    async def check_and_execute_tools(self, user_prompt: str, request_id: str = "UNKNOWN") -> str:
+    async def check_and_execute_tools(self, user_prompt: str, request_id: str = "UNKNOWN") -> dict:
         """
         Quickly decides if a tool is needed using async LLM call.
+        Returns a dict with tool name and result if executed.
         """
         intent = self.get_intent(user_prompt)
         
@@ -71,7 +72,6 @@ Rules:
         
         try:
             logger.info(f"[REQ:{request_id}] Calling LLM for tool routing (fast fail).")
-            # We await the async generate_json without retries
             response = await self.llm.generate_json(user_prompt, system=system_prompt, request_id=request_id, timeout=3, retries=0)
             
             if not response or not response.strip() or response == "{}":
@@ -83,9 +83,12 @@ Rules:
             if tool_name and tool_name != "none":
                 logger.info(f"[REQ:{request_id}] Executing tool: {tool_name}")
                 args = data.get("args", {})
-                # CRITICAL: Await the async tool execution
                 result = await tool_registry.execute_tool(tool_name, args)
-                return f"--- TOOL EXECUTION RESULTS ---\nTool: {tool_name}\nResult: {str(result)}\n-----------------------------"
+                return {
+                    "tool": tool_name,
+                    "result": result,
+                    "formatted": f"--- TOOL EXECUTION RESULTS ---\nTool: {tool_name}\nResult: {str(result)}\n-----------------------------"
+                }
                 
         except Exception as e:
             logger.error(f"[REQ:{request_id}] Tool routing error: {e}")

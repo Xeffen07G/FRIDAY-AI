@@ -98,9 +98,12 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
       const url = new URL(WS_URL);
       if (sessionId) url.searchParams.set("session_id", sessionId);
       
+      console.log(`[WS_DIAG] Attempting connection to: ${url.toString()}`);
+      
       const ws = new WebSocket(url.toString());
 
       ws.onopen = () => {
+        console.log(`[WS_DIAG] Connection OPEN: ${url.toString()}`);
         if (isUnmounted) { ws.close(); return; }
         setIsConnected(true);
         wsRef.current = ws;
@@ -129,6 +132,15 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
             if (!isPlayingRef.current) playNextInQueue();
             break;
           case 'metrics': if (onMetrics) onMetrics(prev => ({...prev, ...msg.data})); break;
+          case 'system_event': 
+            addEvent(msg.data.level || 'SYS', msg.data);
+            if (msg.data.type === 'ui_focus_toggle') {
+                window.dispatchEvent(new CustomEvent('friday_focus_toggle', { detail: msg.data.data }));
+            }
+            if (msg.data.type === 'ptt_event') {
+                window.dispatchEvent(new CustomEvent('friday_ptt', { detail: msg.data.data }));
+            }
+            break;
           case 'error':
             console.error("WS Voice Error:", msg.data);
             setConvState('idle');
@@ -138,7 +150,8 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        console.warn(`[WS_DIAG] Connection CLOSED. Code: ${event.code}, Reason: ${event.reason || 'none'}`);
         if (isUnmounted) return;
         setIsConnected(false);
         setConvState('idle');
@@ -148,6 +161,7 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
       };
 
       ws.onerror = (err) => {
+        console.error(`[WS_DIAG] Connection ERROR:`, err);
         if (isUnmounted) return;
         addEvent('ERR', 'WebSocket connection error');
       };

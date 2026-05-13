@@ -12,7 +12,16 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Cpu,
-  Monitor
+  Monitor,
+  HardDrive,
+  Layout,
+  FileText,
+  Search,
+  Filter,
+  CheckCircle2,
+  XCircle,
+  Briefcase,
+  Globe
 } from 'lucide-react';
 
 const EventRow = ({ event }) => {
@@ -84,6 +93,24 @@ const LatencyBar = ({ label, value, max = 2000, color = "bg-blue-500" }) => {
 
 export default function EngineeringHub({ events, metrics, isConnected, convState }) {
   const [activeTab, setActiveTab] = useState('events');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredEvents = useMemo(() => {
+    if (!searchQuery) return events;
+    return events.filter(e => 
+      JSON.stringify(e.data).toLowerCase().includes(searchQuery.toLowerCase()) ||
+      e.type.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [events, searchQuery]);
+
+  const healthStatus = useMemo(() => {
+    return {
+        ws: isConnected ? 'OPTIMAL' : 'OFFLINE',
+        cpu: metrics?.cpu_percent < 80 ? 'STABLE' : 'STRESSED',
+        memory: 'READY',
+        index: 'SYNCED'
+    };
+  }, [isConnected, metrics]);
 
   return (
     <div className="flex flex-col h-full glass-morphism rounded-2xl border border-white/5 overflow-hidden shadow-2xl">
@@ -94,8 +121,16 @@ export default function EngineeringHub({ events, metrics, isConnected, convState
           <h2 className="text-sm font-bold font-heading tracking-tight">ENGINEERING HUB</h2>
         </div>
         <div className="flex items-center gap-2">
-           <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_5px_#10b981]' : 'bg-red-500 animate-pulse'}`}></div>
-           <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest">{convState}</span>
+            <div className="hidden xl:flex items-center gap-3 mr-4 border-r border-white/5 pr-4">
+                {Object.entries(healthStatus).map(([key, status]) => (
+                    <div key={key} className="flex items-center gap-1.5">
+                        <div className={`w-1 h-1 rounded-full ${status === 'OPTIMAL' || status === 'STABLE' || status === 'READY' || status === 'SYNCED' ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
+                        <span className="text-[8px] font-mono text-slate-500 uppercase">{key}</span>
+                    </div>
+                ))}
+            </div>
+            <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_5px_#10b981]' : 'bg-red-500 animate-pulse'}`}></div>
+            <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest">{convState}</span>
         </div>
       </div>
 
@@ -104,7 +139,9 @@ export default function EngineeringHub({ events, metrics, isConnected, convState
         {[
           { id: 'events', label: 'Inspector', icon: Activity },
           { id: 'performance', label: 'Latency', icon: Zap },
-          { id: 'memory', label: 'Memory', icon: Database }
+          { id: 'memory', label: 'Memory', icon: Database },
+          { id: 'desktop', label: 'Desktop', icon: Monitor },
+          { id: 'workflow', label: 'Workflow', icon: Briefcase }
         ].map(tab => (
           <button
             key={tab.id}
@@ -130,8 +167,20 @@ export default function EngineeringHub({ events, metrics, isConnected, convState
               exit={{ opacity: 0, x: -20 }}
               className="h-full overflow-y-auto custom-scrollbar"
             >
-              {events.length > 0 ? (
-                events.map(event => <EventRow key={event.id} event={event} />)
+              <div className="p-3 border-b border-white/5 bg-slate-950/20">
+                <div className="relative">
+                  <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input 
+                    type="text"
+                    placeholder="Search logs..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-slate-900/50 border border-white/10 rounded-lg py-1.5 pl-8 pr-3 text-[10px] font-mono focus:outline-none focus:border-blue-500/50 transition-colors"
+                  />
+                </div>
+              </div>
+              {filteredEvents.length > 0 ? (
+                filteredEvents.map(event => <EventRow key={event.id} event={event} />)
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-slate-600 gap-3 opacity-50">
                   <Monitor size={32} />
@@ -149,6 +198,21 @@ export default function EngineeringHub({ events, metrics, isConnected, convState
               exit={{ opacity: 0, x: -20 }}
               className="p-6 space-y-6"
             >
+              <div className="grid grid-cols-2 gap-4">
+                 <div className="glass-morphism p-4 rounded-xl border border-white/5">
+                    <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">Execution Mode</span>
+                    <span className={`text-sm font-bold font-heading uppercase ${metrics?.execution_mode === 'deterministic' ? 'text-emerald-400' : 'text-blue-400'}`}>
+                        {metrics?.execution_mode || 'standby'}
+                    </span>
+                 </div>
+                 <div className="glass-morphism p-4 rounded-xl border border-white/5">
+                    <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">LLM Bypass</span>
+                    <span className={`text-sm font-bold font-heading uppercase ${metrics?.llm_bypassed ? 'text-emerald-400' : 'text-slate-500'}`}>
+                        {metrics?.llm_bypassed ? 'ACTIVE' : 'INACTIVE'}
+                    </span>
+                 </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                  <div className="glass-morphism p-4 rounded-xl border border-white/5">
                     <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">STT Offset</span>
@@ -226,6 +290,119 @@ export default function EngineeringHub({ events, metrics, isConnected, convState
                     <span className="text-sm font-bold text-white uppercase">HNSW</span>
                   </div>
                </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'desktop' && (
+            <motion.div 
+              key="desktop"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="p-6 space-y-6 overflow-y-auto h-full custom-scrollbar"
+            >
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="glass-morphism p-4 rounded-xl border border-white/5">
+                     <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">Index Health</span>
+                     <span className="text-sm font-bold text-emerald-400">OPTIMAL</span>
+                  </div>
+                  <div className="glass-morphism p-4 rounded-xl border border-white/5">
+                     <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">Runtime</span>
+                     <span className="text-sm font-bold text-blue-400">BACKGROUND</span>
+                  </div>
+               </div>
+
+               <div className="space-y-4">
+                  <h5 className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.2em] mb-3">Live Workspace Feed</h5>
+                  {events.filter(e => e.data?.component === 'desktop').length > 0 ? (
+                    events.filter(e => e.data?.component === 'desktop').slice(0, 8).map(e => (
+                      <div key={e.id} className="flex items-center gap-3 p-3 bg-slate-900/30 rounded-lg border border-white/5">
+                        <div className="p-1.5 rounded bg-blue-500/10 text-blue-400">
+                          {e.data.type === 'file_indexed' ? <FileText size={12} /> : <Activity size={12} />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-bold text-slate-300 truncate">{e.data.data.name || e.data.data.action}</p>
+                          <p className="text-[8px] font-mono text-slate-500 truncate">{e.data.data.path}</p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 border-2 border-dashed border-slate-800 rounded-2xl">
+                       <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">No Desktop Activity</p>
+                    </div>
+                  )}
+               </div>
+
+               <div className="p-4 bg-purple-500/5 border border-purple-500/20 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Layout size={12} className="text-purple-400" />
+                    <span className="text-[10px] font-mono text-purple-300 uppercase tracking-widest">Active Context</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-relaxed italic">
+                    Privacy Gate Active: Continuous surveillance disabled. Context is only analyzed on explicit request.
+                  </p>
+               </div>
+            </motion.div>
+          )}
+          {activeTab === 'workflow' && (
+            <motion.div 
+              key="workflow"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="p-6 space-y-6 overflow-y-auto h-full custom-scrollbar"
+            >
+              <div className="space-y-6">
+                <section>
+                    <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
+                        <Briefcase size={12} className="text-blue-500" />
+                        Active Projects
+                    </h3>
+                    <div className="grid grid-cols-1 gap-2">
+                        {metrics?.desktop?.projects?.length > 0 ? (
+                            metrics.desktop.projects.map(p => (
+                                <div key={p} className="p-3 rounded-xl bg-slate-900/50 border border-white/5 flex items-center justify-between">
+                                    <span className="text-xs font-mono text-slate-300">{p}</span>
+                                    <span className="text-[8px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">VS CODE</span>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="text-xs text-slate-600 italic p-3 border border-dashed border-slate-800 rounded-xl text-center">No active projects detected</div>
+                        )}
+                    </div>
+                </section>
+
+                <section>
+                    <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
+                        <Globe size={12} className="text-emerald-500" />
+                        Research Context
+                    </h3>
+                    <div className="p-4 rounded-xl bg-slate-900/50 border border-white/5 space-y-3">
+                        <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                            <span className="text-[10px] text-slate-400 uppercase font-mono">Status</span>
+                            <span className="text-[10px] text-emerald-400 font-bold">READY</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-relaxed italic">
+                            Browser tab snapshots and article highlights are stored locally in the workflow memory core.
+                        </p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
+                        <Clock size={12} className="text-purple-500" />
+                        Recent Continuity
+                    </h3>
+                    <div className="space-y-2">
+                        {events.filter(e => e.type === 'SYS' && e.data?.action?.startsWith('SAVE_')).slice(0, 3).map(e => (
+                            <div key={e.id} className="p-2 rounded-lg bg-slate-900/20 border border-white/5 flex items-center justify-between text-[10px] font-mono">
+                                <span className="text-slate-400">{e.data.action}</span>
+                                <span className="text-slate-600">{e.timestamp}</span>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

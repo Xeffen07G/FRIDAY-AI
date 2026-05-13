@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 import psutil
 import time
+import sys
 from core.task_manager import task_manager
 from core.model_manager import model_manager
 from config.settings import settings
@@ -54,5 +55,9 @@ async def deep_health_check():
         },
         "tasks": task_manager.get_diagnostics(),
         "models": model_manager.get_diagnostics(),
+        "desktop": {
+            "startup_mode": "silent" if "--silent" in sys.argv else "normal",
+            "autostart_enabled": True # Placeholder for registry check
+        },
         "timestamp": time.time()
     }

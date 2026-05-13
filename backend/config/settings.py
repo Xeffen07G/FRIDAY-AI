@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     DEMO_MODE: bool = False
     
+    # Server Settings
+    HOST: str = "127.0.0.1"
+    PORT: int = 8001
+    
     # Runtime Paths (Production-grade Isolation)
     RUNTIME_BASE: str = "C:/Users/sayak/AI_RUNTIME"
     SQLITE_PATH: str = os.path.join(RUNTIME_BASE, "db", "friday_memory.db")

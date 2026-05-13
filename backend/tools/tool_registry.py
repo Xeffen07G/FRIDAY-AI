@@ -4,10 +4,12 @@ from tools.web_search_tool import WebSearchTool
 from tools.weather_tool import WeatherTool
 from tools.system_action_tool import SystemActionTool
 from tools.screen_capture_tool import ScreenCaptureTool
+from tools.desktop_agent_tool import DesktopAgentTool
 import logging
 import asyncio
 import json
 import inspect
+import uuid
 
 logger = logging.getLogger("friday.tools.registry")
 
@@ -19,7 +21,8 @@ class ToolRegistry:
             "web_search": WebSearchTool(),
             "weather_lookup": WeatherTool(),
             "system_action": SystemActionTool(),
-            "screen_perception": ScreenCaptureTool()
+            "screen_perception": ScreenCaptureTool(),
+            "desktop_agent": DesktopAgentTool()
         }
 
     def get_all_tools_schema(self):

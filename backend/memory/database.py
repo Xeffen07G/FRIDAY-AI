@@ -63,6 +63,44 @@ def init_db():
                 FOREIGN KEY (session_id) REFERENCES sessions (id)
             )
         ''')
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS desktop_files (
+                path TEXT PRIMARY KEY,
+                name TEXT,
+                extension TEXT,
+                size INTEGER,
+                mtime DATETIME,
+                last_indexed DATETIME
+            )
+        ''')
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS desktop_activity (
+                id TEXT PRIMARY KEY,
+                path TEXT,
+                action TEXT,
+                timestamp DATETIME
+            )
+        ''')
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS background_tasks (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                payload TEXT,
+                status TEXT,
+                scheduled_at DATETIME,
+                completed_at DATETIME,
+                retries INTEGER DEFAULT 0
+            )
+        ''')
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS system_audit_log (
+                id TEXT PRIMARY KEY,
+                event TEXT,
+                component TEXT,
+                metadata TEXT,
+                timestamp DATETIME
+            )
+        ''')
         conn.commit()
         logger.info("Database schema initialized successfully.")
     finally:

@@ -1,3 +1,11 @@
+import { useState, useEffect, useCallback } from 'react';
+import { motion } from 'framer-motion';
+import { useChat } from '../hooks/useChat';
+import { useVoiceWebSocket } from '../hooks/useVoiceWebSocket';
+import Sidebar from '../components/Sidebar';
+import MessageBubble from '../components/MessageBubble';
+import ChatInput from '../components/ChatInput';
+import SettingsPanel from '../components/SettingsPanel';
 import EngineeringHub from '../components/EngineeringHub';
 
 export default function AssistantPage() {
@@ -11,9 +19,9 @@ export default function AssistantPage() {
   const [sidebarTab, setSidebarTab] = useState('sessions');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+  const [isCompact, setIsCompact] = useState(false);
 
   // WebSocket Handlers
-  // ... (handleVoiceTranscript, handleVoiceToken)
   const handleVoiceTranscript = useCallback((text) => {
     const userMsg = { id: Date.now(), sender: 'user', text };
     setMessages(prev => [...prev, userMsg]);
@@ -58,10 +66,35 @@ export default function AssistantPage() {
     if (sidebarTab === 'memories') {
       fetchSemanticMemories();
     }
-  }, [sidebarTab]);
+  }, [sidebarTab, fetchSemanticMemories]);
+
+  // Daily Driver UX: Focus Toggle & PTT
+  useEffect(() => {
+    const handleFocus = (e) => {
+        if (e.detail.action === 'toggle') {
+            setIsCompact(prev => !prev);
+        } else if (e.detail.action === 'show') {
+            setIsCompact(false);
+        }
+    };
+    
+    const handlePTT = (e) => {
+        if (e.detail.state === 'pressed') startRecording();
+        else if (e.detail.state === 'released') stopRecording();
+    };
+
+    window.addEventListener('friday_focus_toggle', handleFocus);
+    window.addEventListener('friday_ptt', handlePTT);
+    return () => {
+        window.removeEventListener('friday_focus_toggle', handleFocus);
+        window.removeEventListener('friday_ptt', handlePTT);
+    };
+  }, [startRecording, stopRecording]);
+
+  const compactStyles = isCompact ? "fixed bottom-6 right-6 w-[400px] h-[600px] z-[100] shadow-[0_0_50px_rgba(0,0,0,0.5)] border-2 border-blue-500/30" : "flex h-screen";
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden selection:bg-blue-500/30 selection:text-blue-100">
+    <div className={`${compactStyles} bg-slate-950 text-slate-100 font-sans overflow-hidden selection:bg-blue-500/30 selection:text-blue-100 transition-all duration-500 ease-in-out ${isCompact ? 'rounded-3xl' : ''}`}>
       
       {/* Sidebar */}
       <Sidebar 
@@ -115,6 +148,14 @@ export default function AssistantPage() {
             </button>
 
             <button 
+              onClick={() => setIsCompact(!isCompact)}
+              className={`p-2 rounded-lg transition-all ${isCompact ? 'text-blue-400 bg-blue-600/10' : 'text-slate-400 hover:text-blue-400'}`}
+              title="Toggle Compact Mode"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+            </button>
+
+            <button 
               onClick={() => setIsSettingsOpen(true)}
               className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
               title="Settings"
@@ -127,16 +168,17 @@ export default function AssistantPage() {
         {/* Main Content Area */}
         <div className="flex-1 flex overflow-hidden">
           {/* Chat Column */}
-          <main 
-            className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth custom-scrollbar relative"
-            ref={chatContainerRef}
-          >
-            <div className="max-w-4xl mx-auto space-y-6 pb-24">
-              {messages.map((msg) => (
-                <MessageBubble key={msg.id} message={msg} />
-              ))}
-              
-              {isLoading && (
+          <div className="flex-1 flex flex-col min-w-0 relative">
+            <main 
+              className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth custom-scrollbar"
+              ref={chatContainerRef}
+            >
+              <div className="max-w-4xl mx-auto space-y-6 pb-8">
+                {messages.map((msg) => (
+                  <MessageBubble key={msg.id} message={msg} />
+                ))}
+                
+                {isLoading && (
                 <div className="flex flex-col w-full items-start gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <div className="glass-morphism text-slate-400 px-5 py-4 rounded-2xl rounded-bl-sm text-[15px] flex items-center gap-3 shadow-sm">
                     <div className="flex gap-1">
@@ -148,19 +190,20 @@ export default function AssistantPage() {
                   </div>
                 </div>
               )}
-              <div ref={chatEndRef} className="h-px w-full" />
-            </div>
+                <div ref={chatEndRef} className="h-px w-full" />
+              </div>
 
-            {isScrolledUp && (
-              <button 
-                onClick={scrollToBottom}
-                className="absolute bottom-32 left-1/2 -translate-x-1/2 bg-slate-800/90 hover:bg-slate-700 text-slate-300 p-2 rounded-full border border-slate-700 shadow-lg backdrop-blur-sm transition-all z-10 hover:text-white"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
-              </button>
-            )}
+              {isScrolledUp && (
+                <button 
+                  onClick={scrollToBottom}
+                  className="absolute bottom-32 left-1/2 -translate-x-1/2 bg-slate-800/90 hover:bg-slate-700 text-slate-300 p-2 rounded-full border border-slate-700 shadow-lg backdrop-blur-sm transition-all z-10 hover:text-white"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                </button>
+              )}
+            </main>
 
-            <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent">
+            <div className="shrink-0 p-4 md:p-6 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent border-t border-white/5">
               <ChatInput 
                 onSend={sendMessage} 
                 onStop={globalInterrupt} 
@@ -173,7 +216,7 @@ export default function AssistantPage() {
                 partialTranscript={partialTranscript}
               />
             </div>
-          </main>
+          </div>
 
           {/* Engineering Panel (Side Overlay) */}
           {(isDiagnosticsOpen || sidebarTab === 'engineering') && (

@@ -39,9 +39,9 @@ async def voice_websocket(websocket: WebSocket):
     try:
         await websocket.accept()
         session = VoiceSession(websocket)
-        logger.info(f"WebSocket connected for voice session. Client: {websocket.client}")
+        logger.info(f"[WS_VOICE] Client connected: {websocket.client}")
     except Exception as e:
-        logger.error(f"Failed to accept WebSocket: {e}")
+        logger.error(f"[WS_VOICE] Failed to accept WebSocket: {e}")
         return
 
     query_params = websocket.query_params
@@ -52,12 +52,27 @@ async def voice_websocket(websocket: WebSocket):
     async def run_heartbeat():
         while session.is_active:
             try:
-                await asyncio.sleep(settings.WS_HEARTBEAT_INTERVAL)
                 await websocket.send_json({"type": "ping", "ts": time.time()})
+                await asyncio.sleep(30)
             except Exception:
                 break
     
     heartbeat_task = asyncio.create_task(run_heartbeat())
+
+    # Phase 5: Observable Runtime - Push events to UI
+    async def event_pusher(event):
+        if not session.is_active: return
+        try:
+            # We only push events relevant to this session or global desktop activity
+            if event.get("component") in ["brain", "voice", "desktop", "network"]:
+                await websocket.send_json({
+                    "type": "system_event",
+                    "data": event
+                })
+        except Exception:
+            pass
+            
+    event_bus.subscribe(event_pusher)
 
     try:
         while True:
@@ -94,10 +109,12 @@ async def voice_websocket(websocket: WebSocket):
                 continue
                 
     except WebSocketDisconnect:
+        session.is_active = False
         event_bus.emit("network", "websocket_disconnected", {"session_id": chat_session_id})
-        logger.info(f"Voice WebSocket Disconnected: {chat_session_id}")
+        logger.info(f"[WS_VOICE] Client disconnected: {chat_session_id}")
     except Exception as e:
-        logger.error(f"WebSocket Error: {e}")
+        session.is_active = False
+        logger.error(f"[WS_VOICE] Runtime Error: {e}")
         event_bus.emit("network", "websocket_error", {"session_id": chat_session_id, "error": str(e)})
 
 async def process_partial_transcript(session: VoiceSession):

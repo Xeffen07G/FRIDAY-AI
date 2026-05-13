@@ -66,7 +66,16 @@ class StartupValidator:
             except Exception as e:
                 logger.error(f"Ollama Service: UNREACHABLE - {e}")
 
-        # 5. Check Environment Secrets
+        # 5. Check Desktop Agent Dependencies
+        try:
+            import pygetwindow
+            import watchdog
+            import pyperclip
+            logger.info("Desktop Dependencies: READY")
+        except ImportError as e:
+            logger.error(f"Desktop Dependencies: MISSING ({e}). Desktop Agent will be disabled.")
+
+        # 6. Check Environment Secrets
         required_keys = ["TAVILY_API_KEY"]
         for key in required_keys:
             if not os.getenv(key):

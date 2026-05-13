@@ -20,7 +20,7 @@ if (!(Test-Path ".env")) {
 
 # 3. Start Backend
 Write-Host "[3/4] Launching F.R.I.D.A.Y. Core Backend..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; python -m vicorn main:app --reload --port 8001" -WindowStyle Normal
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; python -m uvicorn main:app --reload --port 8001" -WindowStyle Normal
 
 # 4. Start Frontend
 Write-Host "[4/4] Launching F.R.I.D.A.Y. Interface..." -ForegroundColor Yellow
