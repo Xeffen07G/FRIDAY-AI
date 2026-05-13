@@ -1,0 +1,30 @@
+{
+  "hello": {
+    "text": "Greetings, sir. All systems are operational. I've successfully synchronized your latest research papers and analyzed the market trends you requested. How may I assist you further?",
+    "tools": []
+  },
+  "status": {
+    "text": "Current system load is 12%. All cognitive modules (Working, Episodic, Semantic) are stabilized. Your local vector database contains 1,422 relevant memory fragments across 14 sessions.",
+    "tools": []
+  },
+  "who are you": {
+    "text": "I am F.R.I.D.A.Y., your Female Replacement Intelligent Digital Assistant Youth. I am a cognitive operating system running entirely on your local hardware, designed for high-speed reasoning and private memory management.",
+    "tools": []
+  },
+  "search documentation": {
+    "text": "Searching the project documentation now. I've found 3 relevant matches in the architecture reports. It seems you were inquiring about the vector persistence layer.",
+    "tools": ["search_docs"]
+  },
+  "list files": {
+    "text": "Listing the files in your current directory now. You have 14 files and 5 directories in the root folder, including the new Docker configuration.",
+    "tools": ["list_dir"]
+  },
+  "memory recall": {
+    "text": "Recalling past conversation from May 11th. You mentioned that we should prioritize the voice pipeline stability. I have reinforced that memory in the semantic layer.",
+    "tools": ["retrieve_memory"]
+  },
+  "diagnostics": {
+    "text": "Initiating full system diagnostics. First-token latency is currently 142ms. WebSocket throughput is 2.4 MB/s. Memory retrieval offset is 12ms. All systems are optimal.",
+    "tools": ["run_diagnostics"]
+  }
+}

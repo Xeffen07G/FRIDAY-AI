@@ -1,5 +1,4 @@
 from tools.calculator_tool import CalculatorTool
-from tools.system_tool import SystemTool
 from tools.terminal_tool import TerminalTool
 from tools.web_search_tool import WebSearchTool
 from tools.weather_tool import WeatherTool
@@ -16,7 +15,6 @@ class ToolRegistry:
     def __init__(self):
         self.tools = {
             "calculator": CalculatorTool(),
-            "system_info": SystemTool(),
             "terminal": TerminalTool(),
             "web_search": WebSearchTool(),
             "weather_lookup": WeatherTool(),

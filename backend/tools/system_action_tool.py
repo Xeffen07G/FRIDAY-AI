@@ -5,12 +5,12 @@ from tools.base_tool import BaseTool
 
 class SystemActionTool(BaseTool):
     name = "system_action"
-    description = "Perform local system actions like opening applications or listing files."
+    description = "Perform local system actions like opening applications, listing files, or retrieving system time/info."
     requires_confirmation = True
     parameters = {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["open_app", "list_files", "system_status"]},
+            "action": {"type": "string", "enum": ["open_app", "list_files", "system_status", "get_info"]},
             "target": {"type": "string", "description": "Application name or directory path"}
         },
         "required": ["action"]
@@ -42,5 +42,11 @@ class SystemActionTool(BaseTool):
             cpu = psutil.cpu_percent()
             mem = psutil.virtual_memory().percent
             return f"System Status: CPU Usage {cpu}%, Memory Usage {mem}%."
+            
+        elif action == "get_info":
+            from datetime import datetime
+            now = datetime.now()
+            os_info = platform.system() + " " + platform.release()
+            return f"Current Time: {now.strftime('%Y-%m-%d %H:%M:%S')}\nOS: {os_info}"
             
         return "Unknown system action."

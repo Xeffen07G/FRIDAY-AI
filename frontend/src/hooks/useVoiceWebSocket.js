@@ -4,8 +4,13 @@ import { API_CONFIG } from '../config/api';
 const WS_URL = API_CONFIG.ENDPOINTS.WS_VOICE;
 
 export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
-  const [convState, setConvState] = useState('idle'); // idle, listening, transcribing, thinking, speaking
+  const [convState, setConvState] = useState('idle');
   const [isRecording, setIsRecording] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [micEnergy, setMicEnergy] = useState(0);
+  const [partialTranscript, setPartialTranscript] = useState('');
+  const [events, setEvents] = useState([]);
+
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -13,83 +18,24 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
   const isPlayingRef = useRef(false);
   const interruptEventRef = useRef(false);
 
-  const [isConnected, setIsConnected] = useState(false);
-  const [micEnergy, setMicEnergy] = useState(0);
-  const [partialTranscript, setPartialTranscript] = useState('');
+  const addEvent = useCallback((type, data) => {
+    setEvents(prev => [{
+      id: Date.now() + Math.random(),
+      timestamp: new Date().toLocaleTimeString(),
+      type,
+      data
+    }, ...prev].slice(0, 50));
+  }, []);
 
-  // Initialize WebSocket with Reconnection
-  useEffect(() => {
-    let reconnectTimeout = null;
-    let isUnmounted = false;
-
-    const connectWebSocket = () => {
-      if (isUnmounted) return;
-      console.log("Attempting to connect Voice WebSocket...");
-      const ws = new WebSocket(WS_URL);
-
-      ws.onopen = () => {
-        if (isUnmounted) {
-          ws.close();
-          return;
-        }
-        console.log("Voice WebSocket CONNECTED successfully.");
-        wsRef.current = ws;
-        setIsConnected(true);
-      };
-
-      ws.onmessage = async (event) => {
-        if (isUnmounted) return;
-        const msg = JSON.parse(event.data);
-        switch (msg.type) {
-          case 'status': setConvState(msg.data); break;
-          case 'transcript': 
-            setPartialTranscript('');
-            if (onTranscript) onTranscript(msg.data); 
-            break;
-          case 'transcript_partial': 
-            setPartialTranscript(msg.data);
-            break;
-          case 'token': if (onToken) onToken(msg.data); break;
-          case 'audio':
-            audioQueueRef.current.push(msg.data);
-            if (!isPlayingRef.current) playNextInQueue();
-            break;
-          case 'metrics': if (onMetrics) onMetrics(prev => ({...prev, ...msg.data})); break;
-          case 'error':
-            console.error("WS Voice Error:", msg.data);
-            setConvState('idle');
-            break;
-          default: break;
-        }
-      };
-
-      ws.onclose = (event) => {
-        if (isUnmounted) return;
-        console.warn(`Voice WebSocket DISCONNECTED (Code: ${event.code}). Reconnecting in 3s...`);
-        setIsConnected(false);
-        setConvState('idle');
-        wsRef.current = null;
-        reconnectTimeout = setTimeout(connectWebSocket, 3000);
-      };
-
-      ws.onerror = (err) => {
-        if (isUnmounted) return;
-        console.error("Voice WebSocket ERROR:", err);
-      };
-    };
-
-    connectWebSocket();
-
-    return () => {
-      isUnmounted = true;
-      clearTimeout(reconnectTimeout);
-      if (wsRef.current) {
-        wsRef.current.onclose = null;
-        wsRef.current.close();
-        wsRef.current = null;
+  const sendMsg = useCallback((type, payload = {}) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = { type, ...payload };
+      wsRef.current.send(JSON.stringify(msg));
+      if (type !== 'pong' && type !== 'audio_chunk') {
+        addEvent('SEND', msg);
       }
-    };
-  }, [onTranscript, onToken, onMetrics]);
+    }
+  }, [addEvent]);
 
   const playNextInQueue = useCallback(async () => {
     if (audioQueueRef.current.length === 0 || interruptEventRef.current) {
@@ -126,9 +72,7 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
     console.log("useVoiceWS: INTERRUPT triggered");
     interruptEventRef.current = true;
     
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "interrupt" }));
-    }
+    sendMsg("interrupt");
     
     if (audioContextRef.current) {
       audioContextRef.current.pause();
@@ -138,9 +82,88 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
     audioQueueRef.current = [];
     isPlayingRef.current = false;
     setConvState('idle');
+    addEvent('UI', { action: 'interrupt' });
     
     setTimeout(() => { interruptEventRef.current = false; }, 200);
-  }, []);
+  }, [sendMsg, addEvent]);
+
+  // Initialize WebSocket with Reconnection
+  useEffect(() => {
+    let reconnectTimeout = null;
+    let isUnmounted = false;
+
+    const connectWebSocket = () => {
+      if (isUnmounted) return;
+      
+      const url = new URL(WS_URL);
+      if (sessionId) url.searchParams.set("session_id", sessionId);
+      
+      const ws = new WebSocket(url.toString());
+
+      ws.onopen = () => {
+        if (isUnmounted) { ws.close(); return; }
+        setIsConnected(true);
+        wsRef.current = ws;
+        addEvent('SYS', { status: 'connected', session_id: sessionId });
+      };
+
+      ws.onmessage = (event) => {
+        if (isUnmounted) return;
+        const msg = JSON.parse(event.data);
+        
+        if (msg.type !== 'ping' && msg.type !== 'token') {
+          addEvent('RECV', msg);
+        }
+
+        switch (msg.type) {
+          case 'ping': sendMsg('pong', { ts: Date.now() }); break;
+          case 'status': setConvState(msg.data); break;
+          case 'transcript': 
+            setPartialTranscript('');
+            if (onTranscript) onTranscript(msg.data); 
+            break;
+          case 'transcript_partial': setPartialTranscript(msg.data); break;
+          case 'token': if (onToken) onToken(msg.data); break;
+          case 'audio':
+            audioQueueRef.current.push(msg.data);
+            if (!isPlayingRef.current) playNextInQueue();
+            break;
+          case 'metrics': if (onMetrics) onMetrics(prev => ({...prev, ...msg.data})); break;
+          case 'error':
+            console.error("WS Voice Error:", msg.data);
+            setConvState('idle');
+            addEvent('ERR', msg.data);
+            break;
+          default: break;
+        }
+      };
+
+      ws.onclose = () => {
+        if (isUnmounted) return;
+        setIsConnected(false);
+        setConvState('idle');
+        wsRef.current = null;
+        addEvent('SYS', { status: 'disconnected' });
+        reconnectTimeout = setTimeout(connectWebSocket, 3000);
+      };
+
+      ws.onerror = (err) => {
+        if (isUnmounted) return;
+        addEvent('ERR', 'WebSocket connection error');
+      };
+    };
+
+    connectWebSocket();
+
+    return () => {
+      isUnmounted = true;
+      clearTimeout(reconnectTimeout);
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+      }
+    };
+  }, [sessionId, onTranscript, onToken, onMetrics, addEvent, sendMsg, playNextInQueue]);
 
   const startRecording = useCallback(async () => {
     try {
@@ -154,64 +177,44 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
       const audioChunks = [];
       const recordingStartTime = Date.now();
 
-      // Local VAD for Barge-in and Auto-stop
       const actx = new AudioContext();
       const source = actx.createMediaStreamSource(stream);
       const analyser = actx.createAnalyser();
       analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.5;
       source.connect(analyser);
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
       let ambientVolume = 255;
       let hasSpoken = false;
       let silenceTimer = null;
-      let maxListeningTimer = null;
       let bargeInFrames = 0;
 
-      const stopInternal = () => {
-          if (recorder.state !== 'inactive') recorder.stop();
-      };
+      const stopInternal = () => { if (recorder.state !== 'inactive') recorder.stop(); };
 
       const bargeInCheck = setInterval(() => {
         analyser.getByteFrequencyData(dataArray);
         const volume = dataArray.reduce((a,b)=>a+b,0) / dataArray.length;
         setMicEnergy(volume);
         
-        // Dynamically track ambient noise (lowest volume seen, decaying upwards slowly)
         if (volume < ambientVolume) ambientVolume = volume;
         else ambientVolume += 0.2; 
         
         const speechThreshold = Math.max(12, ambientVolume + 10);
         const silenceThreshold = Math.max(8, ambientVolume + 6);
         
-        // Barge-in check (debounce 3 frames = 300ms)
         if (volume > speechThreshold + 5 && isPlayingRef.current) {
           bargeInFrames++;
           if (bargeInFrames >= 3) {
-            console.log("Barge-in detected via local VAD (debounced)", { volume, speechThreshold });
             interrupt();
             bargeInFrames = 0;
           }
-        } else {
-          bargeInFrames = 0;
-        }
+        } else { bargeInFrames = 0; }
 
-        // Auto-stop logic (only arm if we aren't already speaking back)
         if (!isPlayingRef.current) {
-           if (!hasSpoken && volume > speechThreshold) {
-               hasSpoken = true;
-               clearTimeout(maxListeningTimer);
-           }
-           
+           if (!hasSpoken && volume > speechThreshold) { hasSpoken = true; }
            if (hasSpoken) {
                if (volume < silenceThreshold) {
-                   if (!silenceTimer) {
-                       silenceTimer = setTimeout(() => {
-                           console.log("Silence detected. Auto-stopping.");
-                           stopInternal();
-                       }, 600); // Accelerated from 1500ms to 600ms for realtime feel
-                   }
+                   if (!silenceTimer) silenceTimer = setTimeout(stopInternal, 600);
                } else {
                    clearTimeout(silenceTimer);
                    silenceTimer = null;
@@ -220,28 +223,15 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
         }
       }, 100);
 
-      maxListeningTimer = setTimeout(() => {
-          if (!hasSpoken) {
-             console.log("No speech detected for 10s. Timing out.");
-             stopInternal();
-          }
-      }, 10000);
-
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
             audioChunks.push(e.data);
-            
-            // Streaming STT: Send partial chunk if WS is open
             if (wsRef.current?.readyState === WebSocket.OPEN) {
                 const reader = new FileReader();
                 reader.readAsDataURL(e.data);
                 reader.onloadend = () => {
                     const base64data = reader.result.split(',')[1];
-                    wsRef.current.send(JSON.stringify({ 
-                        type: "audio_chunk", 
-                        data: base64data,
-                        session_id: sessionId
-                    }));
+                    sendMsg("audio_chunk", { data: base64data, session_id: sessionId });
                 };
             }
         }
@@ -250,53 +240,49 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
       recorder.onstop = async () => {
         clearInterval(bargeInCheck);
         clearTimeout(silenceTimer);
-        clearTimeout(maxListeningTimer);
         actx.close();
         stream.getTracks().forEach(t => t.stop());
         setMicEnergy(0);
         
         const duration = Date.now() - recordingStartTime;
-        
         if (audioChunks.length > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
           const blob = new Blob(audioChunks, { type: "audio/webm" });
-          
           if (blob.size < 2500 || duration < 300) {
-            console.warn(`Dropping tiny audio payload: ${blob.size} bytes, ${duration}ms`);
-            wsRef.current.send(JSON.stringify({ type: "audio_cancel" }));
+            sendMsg("audio_cancel");
           } else {
-            console.log(`Sending audio final: ${blob.size} bytes, ~${duration}ms`);
             const reader = new FileReader();
             reader.readAsDataURL(blob);
             reader.onloadend = () => {
               const base64data = reader.result.split(',')[1];
-              wsRef.current.send(JSON.stringify({ 
-                type: "audio_final", 
-                data: base64data,
+              sendMsg("audio_final", { 
+                data: base64data, 
                 session_id: sessionId,
                 metrics: { blob_size: blob.size, capture_duration: duration }
-              }));
+              });
             };
           }
         }
         setIsRecording(false);
       };
 
-      recorder.start(500); // Send chunks every 500ms for streaming STT
+      recorder.start(500);
       setIsRecording(true);
       setConvState('listening');
+      addEvent('UI', { action: 'start_recording' });
 
     } catch (err) {
       console.error("Failed to start recording:", err);
       setIsRecording(false);
       setConvState('idle');
     }
-  }, [sessionId, interrupt]);
+  }, [sessionId, interrupt, sendMsg, addEvent]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
+      addEvent('UI', { action: 'stop_recording_manual' });
     }
-  }, []);
+  }, [addEvent]);
 
-  return { convState, isConnected, isRecording, micEnergy, partialTranscript, startRecording, stopRecording, interrupt };
+  return { convState, isConnected, isRecording, micEnergy, partialTranscript, startRecording, stopRecording, interrupt, events };
 }

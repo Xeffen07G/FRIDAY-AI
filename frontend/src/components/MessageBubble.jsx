@@ -79,7 +79,7 @@ function MessageBubble({ message }) {
               {message.text}
             </ReactMarkdown>
             {message.streaming && (
-              <span className="inline-block w-1.5 h-4 ml-1 bg-blue-400 animate-pulse-fast align-middle rounded-full shadow-[0_0_8px_rgba(96,165,250,0.8)]"></span>
+              <span className="inline-block w-[3px] h-4 ml-1.5 bg-blue-400 animate-pulse-fast align-middle rounded-full shadow-[0_0_10px_rgba(96,165,250,0.9)]"></span>
             )}
           </div>
         )}

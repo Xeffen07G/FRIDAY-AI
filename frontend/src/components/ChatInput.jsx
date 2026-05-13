@@ -113,9 +113,26 @@ export default function ChatInput({
 
         {/* Input Field */}
         <div className="flex-1 relative flex items-center shadow-lg rounded-full overflow-hidden bg-slate-950 border border-slate-700 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/50 transition-all">
+          {isRecording && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+              <div className="flex items-center gap-1">
+                {[...Array(8)].map((_, i) => (
+                  <div 
+                    key={i}
+                    className="w-1.5 bg-blue-400 rounded-full transition-all duration-75"
+                    style={{ 
+                      height: `${Math.max(4, (micEnergy / 255) * 40 * (0.5 + Math.random()))}px`,
+                      opacity: 0.4 + (micEnergy / 255) * 0.6
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          
           <input
             type="text"
-            className="w-full bg-transparent py-3.5 pl-6 pr-16 focus:outline-none text-slate-100 placeholder-slate-500"
+            className={`w-full bg-transparent py-3.5 pl-6 pr-16 focus:outline-none text-slate-100 placeholder-slate-500 transition-opacity duration-300 ${isRecording ? 'opacity-40' : 'opacity-100'}`}
             placeholder={isRecording ? (partialTranscript || "Listening...") : "Command F.R.I.D.A.Y..."}
             value={isRecording ? partialTranscript : inputValue}
             onChange={(e) => setInputValue(e.target.value)}

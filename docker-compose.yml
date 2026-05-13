@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8001:8001"
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - CHROMA_DB_PATH=/app/data/chroma
+    volumes:
+      - ./backend/data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+# Note: This assumes you have Ollama running on your host machine.
+# To run Ollama in a container as well, uncomment the following:
+
+#  ollama:
+#    image: ollama/ollama
+#    ports:
+#      - "11434:11434"
+#    volumes:
+#      - ./ollama_data:/root/.ollama
+#    deploy:
+#      resources:
+#        reservations:
+#          devices:
+#            - driver: nvidia
+#              count: 1
+#              capabilities: [gpu]

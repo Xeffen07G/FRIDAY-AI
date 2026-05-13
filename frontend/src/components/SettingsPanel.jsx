@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Zap } from 'lucide-react';
+import { API_CONFIG } from '../config/api';
 
 export default function SettingsPanel({ isOpen, onClose }) {
+  const [demoEnabled, setDemoEnabled] = useState(false);
   if (!isOpen) return null;
 
   return (
@@ -70,6 +73,33 @@ export default function SettingsPanel({ isOpen, onClose }) {
                   <option>Piper (Local)</option>
                   <option>Web Speech API</option>
                 </select>
+              </div>
+            </div>
+          </section>
+
+          {/* Showcase & Demo */}
+          <section className="pt-4 border-t border-slate-800/50">
+            <h3 className="text-sm font-semibold text-amber-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Zap size={14} /> Showcase & Demo
+            </h3>
+            <div className="bg-amber-500/5 border border-amber-500/10 p-4 rounded-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-200">Simulated Mode</label>
+                  <p className="text-[10px] text-slate-500">Use pre-recorded snapshots for reliable demos.</p>
+                </div>
+                <button 
+                  onClick={async () => {
+                    const next = !demoEnabled;
+                    setDemoEnabled(next);
+                    try {
+                      await fetch(`${API_CONFIG.ENDPOINTS.CHAT.replace('/chat', '')}/settings/demo?enabled=${next}`, { method: 'POST' });
+                    } catch (e) { console.error(e); }
+                  }}
+                  className={`w-10 h-5 rounded-full relative transition-colors ${demoEnabled ? 'bg-amber-600' : 'bg-slate-800'}`}
+                >
+                  <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${demoEnabled ? 'right-1' : 'left-1'}`}></div>
+                </button>
               </div>
             </div>
           </section>

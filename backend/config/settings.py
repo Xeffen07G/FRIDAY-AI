@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "F.R.I.D.A.Y. Core"
     VERSION: str = "1.5.0"
     DEBUG: bool = False
+    DEMO_MODE: bool = False
     
     # Runtime Paths (Production-grade Isolation)
     RUNTIME_BASE: str = "C:/Users/sayak/AI_RUNTIME"
@@ -30,10 +31,30 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = ["*"]
     
+    # WebSocket Settings
+    WS_HEARTBEAT_INTERVAL: float = 30.0
+    WS_RECONNECT_RETRY: int = 5
+    
+    # Tool Settings
+    TOOL_TIMEOUT: float = 15.0
+    TOOL_PARALLEL_LIMIT: int = 3
+    PERMISSION_GATE_ENABLED: bool = True
+    
+    # VAD & Audio Settings
+    VAD_THRESHOLD: float = 0.5
+    SILENCE_DURATION_MS: int = 800
+    AUDIO_SAMPLE_RATE: int = 16000
+    
     # Memory Settings
     MEMORY_THRESHOLD: float = 0.55
     CONTEXT_WINDOW_SIZE: int = 8
     IMPORTANCE_THRESHOLD: float = 0.3
+    DECAY_ENABLED: bool = True
+    
+    # Telemetry & Observability
+    ENABLE_TELEMETRY: bool = True
+    TELEMETRY_BUFFER_SIZE: int = 100
+    EVENT_BUS_LOGGING: bool = False
     
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

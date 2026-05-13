@@ -1,6 +1,5 @@
 import time
 import uuid
-import signal
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -95,3 +94,9 @@ app.include_router(observability_router, prefix="/api/observability", tags=["obs
 @app.get("/")
 def read_root():
     return {"status": "online", "identity": "F.R.I.D.A.Y."}
+
+@app.post("/api/settings/demo")
+async def toggle_demo_mode(enabled: bool):
+    settings.DEMO_MODE = enabled
+    logger.info(f"DEMO_MODE updated: {settings.DEMO_MODE}")
+    return {"demo_mode": settings.DEMO_MODE}

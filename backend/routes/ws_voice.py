@@ -44,8 +44,20 @@ async def voice_websocket(websocket: WebSocket):
         logger.error(f"Failed to accept WebSocket: {e}")
         return
 
-    chat_session_id = str(uuid.uuid4())
+    query_params = websocket.query_params
+    chat_session_id = query_params.get("session_id", str(uuid.uuid4()))
     event_bus.emit("network", "websocket_connected", {"session_id": chat_session_id})
+
+    # Phase 3: Session Reliability - Heartbeat mechanism
+    async def run_heartbeat():
+        while session.is_active:
+            try:
+                await asyncio.sleep(settings.WS_HEARTBEAT_INTERVAL)
+                await websocket.send_json({"type": "ping", "ts": time.time()})
+            except Exception:
+                break
+    
+    heartbeat_task = asyncio.create_task(run_heartbeat())
 
     try:
         while True:

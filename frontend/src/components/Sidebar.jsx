@@ -26,15 +26,21 @@ function Sidebar({
         <div className="flex bg-slate-950/50 p-1 rounded-lg">
           <button 
             onClick={() => setTab('sessions')}
-            className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${tab === 'sessions' ? 'bg-slate-800 text-slate-200 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+            className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-2 rounded-md transition-all ${tab === 'sessions' ? 'bg-slate-800 text-blue-400 shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
           >
             Sessions
           </button>
           <button 
             onClick={() => setTab('memories')}
-            className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${tab === 'memories' ? 'bg-slate-800 text-slate-200 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+            className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-2 rounded-md transition-all ${tab === 'memories' ? 'bg-slate-800 text-blue-400 shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
           >
             Knowledge
+          </button>
+          <button 
+            onClick={() => setTab('engineering')}
+            className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-2 rounded-md transition-all ${tab === 'engineering' ? 'bg-slate-800 text-blue-400 shadow-inner' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            Terminal
           </button>
         </div>
       </div>

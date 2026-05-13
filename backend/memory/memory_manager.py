@@ -184,8 +184,13 @@ class MemoryManager:
             system_prompt = "You are a master of semantic memory. Summarize the following conversation into a concise 'fact-based' summary of what was discussed, what the user's goals were, and any key personal info revealed. Keep it under 150 words."
             user_prompt = f"Transcript:\n{transcript}\n\nSummary:"
             
+            messages_to_send = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+            
             summary = ""
-            async for token in llm.generate_stream(user_prompt, system=system_prompt):
+            async for token in llm.generate_stream(messages_to_send):
                 summary += token
             
             if not summary.strip() or len(summary) < 20:
