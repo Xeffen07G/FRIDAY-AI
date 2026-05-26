@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Body
 from memory.vector_store import vector_store
+from memory.workspace_memory import workspace_memory
 from typing import Dict, Any
 
 router = APIRouter()
@@ -8,6 +9,11 @@ router = APIRouter()
 def list_memories():
     """Retrieve all semantic memories."""
     return vector_store.get_all_memories()
+
+@router.get("/workspace")
+def get_workspace_history():
+    """Retrieve workspace history continuity."""
+    return workspace_memory.get_workspace_history()
 
 @router.delete("/{memory_id}")
 def delete_semantic_memory(memory_id: str):

@@ -4,7 +4,7 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8001:8001"
+      - "8000:8000"
     environment:
       - OLLAMA_HOST=http://host.docker.internal:11434
       - CHROMA_DB_PATH=/app/data/chroma

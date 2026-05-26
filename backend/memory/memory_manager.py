@@ -215,4 +215,35 @@ class MemoryManager:
             logger.error(f"Session summarization failed: {e}")
             return False
 
+    async def save_prior_action(self, action_type: str, payload: dict, success: bool, session_id: str):
+        """Saves a prior executed action into episodic memory and SQL audit logs."""
+        import json
+        action_text = f"Executed action {action_type} with payload {json.dumps(payload)}. Success: {success}."
+        await self.extract_and_store_memory(action_text, "assistant", session_id)
+        
+        from memory.database import get_connection
+        conn = get_connection()
+        try:
+            conn.execute(
+                "INSERT INTO system_audit_log (id, event, component, metadata, timestamp) VALUES (?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), f"ACTION_{action_type.upper()}", "executor", json.dumps({"payload": payload, "success": success}), datetime.now().isoformat())
+            )
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to log action to SQLite audit log: {e}")
+        finally:
+            conn.close()
+
+    async def save_preference(self, key: str, value: str, session_id: str):
+        """Saves user preference explicitly to profile semantic memory."""
+        pref_text = f"User preference: {key} is set to {value}."
+        await self.extract_and_store_memory(pref_text, "user", session_id)
+
+    async def save_workflow(self, workflow_name: str, steps: list, session_id: str):
+        """Saves a reusable workflow pattern to project semantic memory."""
+        import json
+        wf_text = f"Saved workflow '{workflow_name}' consisting of steps: {json.dumps(steps)}."
+        await self.extract_and_store_memory(wf_text, "user", session_id)
+
 memory_manager = MemoryManager()
+

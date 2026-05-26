@@ -3,7 +3,7 @@ import React from 'react';
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, errorInfo: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -11,30 +11,119 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error("F.R.I.D.A.Y. Frontend Crash:", error, errorInfo);
+    console.error('ErrorBoundary caught:', error, errorInfo);
+    this.setState({ errorInfo });
+  }
+
+  parseErrorDetails() {
+    let file = 'Unknown';
+    let component = 'Unknown';
+    let stackSummary = '';
+
+    const error = this.state.error;
+    const errorInfo = this.state.errorInfo;
+
+    if (error && error.stack) {
+      stackSummary = error.stack.split('\n').slice(0, 8).join('\n');
+
+      const stackLines = error.stack.split('\n');
+      for (const line of stackLines) {
+        const match = line.match(/at\s+([^\s(]+)\s+\(([^)]+)\)/) || line.match(/at\s+()([^)]+)/);
+        if (match) {
+          component = match[1] || component;
+          const fullPath = match[2];
+          if (fullPath) {
+            const fileMatch = fullPath.match(/([^/\\?]+(?::\d+){0,2})(?:\?|$)/);
+            if (fileMatch) {
+              file = fileMatch[1];
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (errorInfo && errorInfo.componentStack) {
+      const compLines = errorInfo.componentStack.split('\n').filter(line => line.trim());
+      if (compLines.length > 0) {
+        const firstLine = compLines[0].trim();
+        const compMatch = firstLine.match(/in\s+([^\s(]+)/);
+        if (compMatch) {
+          component = compMatch[1];
+        }
+        const fileMatch = firstLine.match(/at\s+([^\s)]+)/);
+        if (fileMatch) {
+          const fullPath = fileMatch[1];
+          const basenameMatch = fullPath.match(/([^/\\?]+)(?:\?|$)/);
+          if (basenameMatch) {
+            file = basenameMatch[1];
+          }
+        }
+      }
+
+      if (!stackSummary && errorInfo.componentStack) {
+        stackSummary = errorInfo.componentStack.trim();
+      }
+    }
+
+    return { file, component, stackSummary };
   }
 
   render() {
     if (this.state.hasError) {
+      const { file, component, stackSummary } = this.parseErrorDetails();
+
+      // Inline styles so this works even when CSS/Tailwind fails to load
+      const containerStyle = {
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        minHeight: '100vh', background: '#090a0c', color: '#e2e8f0', padding: '24px',
+        fontFamily: "'Inter', system-ui, -apple-system, sans-serif", textAlign: 'center'
+      };
+      const headingStyle = { fontSize: '20px', fontWeight: 700, marginBottom: '8px', color: '#f1f5f9', letterSpacing: '-0.01em' };
+      const errorMsgStyle = { fontSize: '14px', color: '#94a3b8', maxWidth: '560px', marginBottom: '24px', lineHeight: 1.6 };
+      const btnStyle = {
+        padding: '10px 20px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '12px',
+        fontSize: '13px', fontWeight: 600, cursor: 'pointer', letterSpacing: '0.02em'
+      };
+      const detailBoxStyle = {
+        marginTop: '32px', maxWidth: '640px', width: '100%', background: '#121316',
+        border: '1px solid rgba(255,255,255,0.03)', borderRadius: '16px', padding: '24px',
+        textAlign: 'left', fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: '#94a3b8'
+      };
+      const labelStyle = { color: '#64748b', marginRight: '8px', userSelect: 'none' };
+      const fileValStyle = { color: '#f87171', fontWeight: 600 };
+      const compValStyle = { color: '#60a5fa', fontWeight: 600 };
+      const preStyle = {
+        padding: '16px', background: '#050607', borderRadius: '12px', fontSize: '10.5px', color: '#64748b',
+        overflow: 'auto', border: '1px solid rgba(255,255,255,0.015)', maxHeight: '200px',
+        whiteSpace: 'pre-wrap', lineHeight: 1.6, marginTop: '8px'
+      };
+      const rowStyle = { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' };
+
       return (
-        <div className="flex flex-col items-center justify-center h-screen bg-slate-950 text-slate-100 p-6 text-center">
-          <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mb-6 animate-pulse">
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-          </div>
-          <h1 className="text-2xl font-bold mb-2">Interface Subsystem Failure</h1>
-          <p className="text-slate-400 max-w-md mb-8">
-            F.R.I.D.A.Y.'s neural interface has encountered a critical error. 
-            The core logic is likely still intact, but the display layer needs a restart.
+        <div style={containerStyle}>
+          <h1 style={headingStyle}>Something went wrong</h1>
+          <p style={errorMsgStyle}>
+            Error: {this.state.error?.message || this.state.error?.toString()}
           </p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-blue-500/20"
-          >
-            Re-initialize Interface
+          <button style={btnStyle} onClick={() => window.location.reload()}>
+            Reload
           </button>
-          <pre className="mt-8 p-4 bg-slate-900 rounded-lg text-xs text-red-400 text-left overflow-auto max-w-2xl w-full border border-slate-800">
-            {this.state.error?.toString()}
-          </pre>
+
+          <div style={detailBoxStyle}>
+            <div style={rowStyle}>
+              <span style={labelStyle}>file:</span>
+              <span style={fileValStyle}>{file}</span>
+            </div>
+            <div style={rowStyle}>
+              <span style={labelStyle}>component:</span>
+              <span style={compValStyle}>{component}</span>
+            </div>
+            <div>
+              <span style={labelStyle}>stack:</span>
+              <pre style={preStyle}>{stackSummary}</pre>
+            </div>
+          </div>
         </div>
       );
     }

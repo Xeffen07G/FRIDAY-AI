@@ -13,7 +13,7 @@
 4. **Desktop UX**:
    - `TrayManager`: Spawns native tray thread.
    - `HotkeyManager`: Binds global `Ctrl+Space` and `Caps Lock` (PTT).
-5. **API Layer**: FastAPI server starts on port 8001.
+5. **API Layer**: FastAPI server starts on port 8000.
 
 ## 2. Silent vs. Normal Mode
 - **Normal Mode**: UI opens immediately on launch.

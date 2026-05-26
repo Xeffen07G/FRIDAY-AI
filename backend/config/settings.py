@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     
     # Server Settings
     HOST: str = "127.0.0.1"
-    PORT: int = 8001
+    PORT: int = 8000
     
     # Runtime Paths (Production-grade Isolation)
     RUNTIME_BASE: str = "C:/Users/sayak/AI_RUNTIME"

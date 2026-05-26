@@ -13,8 +13,33 @@ START_TIME = time.time()
 
 @router.get("/")
 async def health_check():
-    """Simple health check."""
-    return {"status": "healthy", "timestamp": time.time()}
+    """Simple health check returning subsystem status."""
+    # LLM check
+    llm_ok = "ok"
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get("http://127.0.0.1:11434/api/tags")
+            if resp.status_code != 200:
+                llm_ok = "error"
+    except Exception:
+        llm_ok = "error"
+
+    # STT check (piper/whisper availability)
+    stt_ok = "ok"
+    try:
+        import os
+        if not os.path.exists(os.path.join(os.path.dirname(__file__), "..", "piper.exe")):
+            stt_ok = "degraded"
+    except Exception:
+        stt_ok = "error"
+
+    return {
+        "backend": "ok",
+        "ws": "ok",
+        "llm": llm_ok,
+        "stt": stt_ok
+    }
 
 @router.get("/deep")
 async def deep_health_check():

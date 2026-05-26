@@ -3,7 +3,7 @@
 ## Common Issues
 
 ### 1. WebSocket Disconnected (Red indicator)
-- **Cause**: Backend service is down or port 8001 is blocked.
+- **Cause**: Backend service is down or port 8000 is blocked.
 - **Fix**: Check terminal running `uvicorn main:app`. Ensure firewall allows local WebSocket connections.
 
 ### 2. No Voice Response

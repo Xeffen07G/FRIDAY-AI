@@ -1,0 +1,16 @@
+{
+    "version": "2.4.0",
+    "context": "test_context",
+    "exception_type": "ValueError",
+    "message": "Simulated product crash",
+    "traceback": [
+        "Traceback (most recent call last):\n",
+        "  File \"C:\\Users\\sayak\\Downloads\\JARVIS\\backend\\tests\\release_validation\\test_release.py\", line 48, in test_crash_diagnostic_stack_traces\n    raise ValueError(\"Simulated product crash\")\n",
+        "ValueError: Simulated product crash\n"
+    ],
+    "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+    "subsystem_states": {
+        "planner": "STABLE",
+        "event_bus": "RUNNING"
+    }
+}

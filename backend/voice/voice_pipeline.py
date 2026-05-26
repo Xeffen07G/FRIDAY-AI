@@ -22,7 +22,7 @@ class VoicePipeline:
                 audio_file_path, 
                 beam_size=5,
                 vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=1000, speech_pad_ms=400),
+                vad_parameters=dict(min_silence_duration_ms=400, speech_pad_ms=200),
                 language="en",
                 initial_prompt="User speaking to assistant clearly.",
                 condition_on_previous_text=False,

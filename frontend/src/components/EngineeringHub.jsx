@@ -1,27 +1,16 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Activity, 
   Terminal, 
-  Database, 
   Zap, 
   Clock, 
   ChevronRight, 
   ChevronDown,
-  AlertCircle,
-  ArrowUpRight,
-  ArrowDownLeft,
-  Cpu,
-  Monitor,
-  HardDrive,
-  Layout,
-  FileText,
-  Search,
-  Filter,
-  CheckCircle2,
-  XCircle,
-  Briefcase,
-  Globe
+  Shield,
+  RefreshCw,
+  FolderOpen,
+  ListTodo
 } from 'lucide-react';
 
 const EventRow = ({ event }) => {
@@ -72,85 +61,160 @@ const EventRow = ({ event }) => {
   );
 };
 
-const LatencyBar = ({ label, value, max = 2000, color = "bg-blue-500" }) => {
-  const percentage = Math.min(100, (value / max) * 100);
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-[10px] font-mono">
-        <span className="text-slate-500 uppercase">{label}</span>
-        <span className={value > 1500 ? 'text-red-400' : 'text-slate-300'}>{value}ms</span>
-      </div>
-      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-        <motion.div 
-          initial={{ width: 0 }}
-          animate={{ width: `${percentage}%` }}
-          className={`h-full ${color} rounded-full`}
-        />
-      </div>
-    </div>
-  );
-};
+function EngineeringHub({ events = [], metrics = {}, isConnected, convState }) {
+  const [activeTab, setActiveTab] = useState('timeline');
+  const [telemetry, setTelemetry] = useState(null);
 
-export default function EngineeringHub({ events, metrics, isConnected, convState }) {
-  const [activeTab, setActiveTab] = useState('events');
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const filteredEvents = useMemo(() => {
-    if (!searchQuery) return events;
-    return events.filter(e => 
-      JSON.stringify(e.data).toLowerCase().includes(searchQuery.toLowerCase()) ||
-      e.type.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [events, searchQuery]);
-
-  const healthStatus = useMemo(() => {
-    return {
-        ws: isConnected ? 'OPTIMAL' : 'OFFLINE',
-        cpu: metrics?.cpu_percent < 80 ? 'STABLE' : 'STRESSED',
-        memory: 'READY',
-        index: 'SYNCED'
+  useEffect(() => {
+    const fetchTelemetry = async () => {
+      try {
+        const response = await fetch('/api/observability/telemetry');
+        if (response.ok) {
+          const data = await response.json();
+          setTelemetry(data);
+        }
+      } catch (err) {}
     };
-  }, [isConnected, metrics]);
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Error cleaner and Explainer (Tasks 5 & 7)
+  const getErrorExplanation = (errStr) => {
+    if (!errStr) return { message: 'Execution failed', cause: 'Unknown error.', action: 'Check system logs.' };
+    const str = String(errStr);
+    
+    if (str.includes('ModuleNotFoundError')) {
+      const match = str.match(/No module named '([^']+)'/);
+      const mod = match ? match[1] : 'dependency';
+      return { 
+        message: `${mod} is not installed.`, 
+        cause: `Missing Python module: ${mod}`, 
+        action: `Run 'pip install ${mod}' or 'npm install'.`
+      };
+    }
+    if (str.includes('ECONNREFUSED')) {
+      return {
+        message: 'Connection refused.',
+        cause: 'The target service is not running or port is blocked.',
+        action: 'Restart backend or free the required port.'
+      };
+    }
+    if (str.includes('command not found')) {
+      return {
+        message: 'Command not found.',
+        cause: 'The executable is missing from PATH.',
+        action: 'Install the required tool or fix environment variables.'
+      };
+    }
+    if (str.includes('EADDRINUSE')) {
+      return {
+        message: 'Port is already in use.',
+        cause: 'Another process is occupying the requested port.',
+        action: 'Kill the process using the port (e.g., kill-port 5173).'
+      };
+    }
+    if (str.includes('npm ERR!')) {
+      return {
+        message: 'npm install failed.',
+        cause: 'Package conflict or missing package.json.',
+        action: 'Delete node_modules and package-lock.json, then retry.'
+      };
+    }
+    
+    const firstLine = str.split('\n')[0];
+    return {
+      message: firstLine.length > 80 ? firstLine.substring(0, 80) + '...' : firstLine,
+      cause: 'Unhandled exception in execution flow.',
+      action: 'Check recent code changes or restart the system.'
+    };
+  };
+
+  // Execution Timeline derived from events
+  const timelineEvents = useMemo(() => {
+    return events.filter(e => 
+      e.data?.type === 'execution_started' || 
+      e.data?.type === 'tool_running' ||
+      e.data?.type === 'tool_completed' ||
+      e.data?.type === 'action_failed' ||
+      e.data?.type === 'action_retry' ||
+      e.data?.type === 'tool_result' ||
+      e.data?.metrics
+    ).map((e, idx) => {
+      let status = 'RUNNING';
+      let detail = '';
+      let explanation = null;
+      
+      if (e.data?.type === 'execution_started') {
+        status = 'START';
+        detail = 'Execution Pipeline Started';
+      } else if (e.data?.type === 'tool_running') {
+        status = 'TOOL';
+        detail = `Executing: ${e.data?.tool || 'unknown'}`;
+      } else if (e.data?.type === 'tool_completed' || e.data?.type === 'tool_result') {
+        status = 'SUCCESS';
+        detail = `Completed: ${e.data?.tool || 'tool'}`;
+      } else if (e.data?.type === 'action_retry') {
+        status = 'RETRYING';
+        detail = `Retrying ${e.data?.tool || 'tool'} (${e.data?.attempt || 1}/${e.data?.max || 3})...`;
+      } else if (e.data?.type === 'action_failed' || e.type === 'ERR') {
+        status = 'FAILED';
+        explanation = getErrorExplanation(e.data?.error);
+        detail = explanation.message;
+      } else if (e.data?.metrics) {
+        status = 'DONE';
+        detail = `Latency: ${e.data.metrics.total_ms || 0}ms`;
+      }
+      return { 
+        id: idx, 
+        status, 
+        detail, 
+        explanation, 
+        timestamp: e.timestamp, 
+        confidence: e.data?.confidence,
+        validationSource: e.data?.validation_source,
+        fallbackUsed: e.data?.fallback_used,
+        data: e.data 
+      };
+    });
+  }, [events]);
+
+  const latestMetrics = useMemo(() => {
+    const mEvent = [...events].reverse().find(e => e.data?.metrics);
+    return mEvent ? mEvent.data.metrics : null;
+  }, [events]);
 
   return (
-    <div className="flex flex-col h-full glass-morphism rounded-2xl border border-white/5 overflow-hidden shadow-2xl">
+    <div className="flex flex-col h-full bg-slate-950/85 backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden shadow-2xl">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-slate-900/40 border-b border-white/5">
         <div className="flex items-center gap-2">
-          <Terminal size={16} className="text-blue-400" />
-          <h2 className="text-sm font-bold font-heading tracking-tight">ENGINEERING HUB</h2>
+          <Terminal size={14} className="text-slate-400" />
+          <h2 className="text-xs font-bold font-mono tracking-widest text-slate-200 uppercase">System Diagnostics</h2>
         </div>
         <div className="flex items-center gap-2">
-            <div className="hidden xl:flex items-center gap-3 mr-4 border-r border-white/5 pr-4">
-                {Object.entries(healthStatus).map(([key, status]) => (
-                    <div key={key} className="flex items-center gap-1.5">
-                        <div className={`w-1 h-1 rounded-full ${status === 'OPTIMAL' || status === 'STABLE' || status === 'READY' || status === 'SYNCED' ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
-                        <span className="text-[8px] font-mono text-slate-500 uppercase">{key}</span>
-                    </div>
-                ))}
-            </div>
             <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_5px_#10b981]' : 'bg-red-500 animate-pulse'}`}></div>
-            <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest">{convState}</span>
+            <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-widest">{isConnected ? "ONLINE" : "OFFLINE"}</span>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex px-2 py-1 bg-slate-950/30 gap-1">
+      <div className="flex px-1.5 py-1 bg-slate-950/30 gap-0.5 border-b border-white/5">
         {[
-          { id: 'events', label: 'Inspector', icon: Activity },
-          { id: 'performance', label: 'Latency', icon: Zap },
-          { id: 'memory', label: 'Memory', icon: Database },
-          { id: 'desktop', label: 'Desktop', icon: Monitor },
-          { id: 'workflow', label: 'Workflow', icon: Briefcase }
+          { id: 'timeline', label: 'Timeline', icon: ListTodo },
+          { id: 'latency', label: 'Latencies', icon: Zap },
+          { id: 'stability', label: 'Stability', icon: Activity },
+          { id: 'events', label: 'Raw Events', icon: Terminal }
         ].map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
-              activeTab === tab.id ? 'bg-blue-600/20 text-blue-400 shadow-inner' : 'text-slate-500 hover:text-slate-300'
+            className={`flex-1 flex items-center justify-center gap-1 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all ${
+              activeTab === tab.id ? 'bg-slate-800 text-slate-200' : 'text-slate-500 hover:text-slate-300 border border-transparent'
             }`}
           >
-            <tab.icon size={12} />
+            <tab.icon size={10} />
             {tab.label}
           </button>
         ))}
@@ -159,265 +223,168 @@ export default function EngineeringHub({ events, metrics, isConnected, convState
       {/* Content */}
       <div className="flex-1 overflow-hidden relative">
         <AnimatePresence mode="wait">
+          {activeTab === 'timeline' && (
+            <motion.div 
+              key="timeline"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="p-4 space-y-4 overflow-y-auto h-full custom-scrollbar"
+            >
+              <div className="bg-slate-900/40 border border-white/5 p-4 rounded-xl space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                  <ListTodo size={14} className="text-slate-400" />
+                  <span>EXECUTION TIMELINE</span>
+                </div>
+                <div className="space-y-2.5">
+                  {timelineEvents.length > 0 ? timelineEvents.map((node, index) => (
+                    <div key={index} className="relative flex items-center gap-4 bg-slate-950/60 p-3 rounded-lg border border-white/5">
+                      <div className="flex items-center justify-center w-5 h-5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold">
+                        {index + 1}
+                      </div>
+                      <div className="flex-1 text-[11px] font-mono">
+                        <div className="flex justify-between mb-0.5">
+                           <span className="font-bold text-slate-300 uppercase">{node.status}</span>
+                           <span className="text-slate-500 text-[9px] px-1.5 py-0.5">{node.timestamp}</span>
+                        </div>
+                        <span className="text-slate-400 text-[10px] block">{node.detail}</span>
+                        {node.confidence !== undefined && node.confidence !== null && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[9px] font-mono text-slate-500">
+                            <span>Confidence:</span>
+                            <span className={`font-bold px-1 rounded ${
+                              node.confidence >= 90 
+                                ? 'text-emerald-400 bg-emerald-500/10' 
+                                : 'text-amber-400 bg-amber-500/10'
+                            }`}>{node.confidence}%</span>
+                            {node.validationSource && (
+                              <span className="opacity-80">via {node.validationSource}</span>
+                            )}
+                            {node.fallbackUsed && (
+                              <span className="text-red-400">({node.fallbackUsed})</span>
+                            )}
+                          </div>
+                        )}
+                        
+                        {node.explanation && (
+                          <div className="mt-2 bg-red-500/10 border border-red-500/20 p-2 rounded text-[9px]">
+                            <span className="text-red-400 font-bold block mb-1">PROBABLE CAUSE:</span>
+                            <span className="text-slate-300 block mb-2">{node.explanation.cause}</span>
+                            <span className="text-emerald-400 font-bold block mb-1">SUGGESTED ACTION:</span>
+                            <span className="text-slate-300 block">{node.explanation.action}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )) : (
+                    <div className="text-slate-500 text-xs italic">Awaiting execution...</div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'latency' && (
+            <motion.div 
+              key="latency"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="p-4 space-y-4 overflow-y-auto h-full custom-scrollbar"
+            >
+              <div className="bg-slate-900/40 border border-white/5 p-4 rounded-xl space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                  <Clock size={14} className="text-slate-400" />
+                  <span>TOOL LATENCY TRACKER</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                  <div className="bg-slate-950/60 p-2.5 rounded border border-white/5">
+                    <span className="text-slate-500 block text-[8px] mb-1">TOTAL EXECUTION TIME</span>
+                    <span className="text-emerald-400 font-bold">{latestMetrics?.total_ms || 0}ms</span>
+                  </div>
+                  <div className="bg-slate-950/60 p-2.5 rounded border border-white/5">
+                    <span className="text-slate-500 block text-[8px] mb-1">STARTUP DELAY</span>
+                    <span className="text-blue-400 font-bold">{latestMetrics?.time_to_first_visible_response_ms || 0}ms</span>
+                  </div>
+                  <div className="bg-slate-950/60 p-2.5 rounded border border-white/5">
+                    <span className="text-slate-500 block text-[8px] mb-1">PLANNER LATENCY</span>
+                    <span className="text-purple-400 font-bold">{latestMetrics?.intent_ms || 0}ms</span>
+                  </div>
+                  <div className="bg-slate-950/60 p-2.5 rounded border border-white/5">
+                    <span className="text-slate-500 block text-[8px] mb-1">TOOL LATENCY</span>
+                    <span className="text-amber-400 font-bold">{latestMetrics?.tool_ms || 0}ms</span>
+                  </div>
+                </div>
+                <div className="text-[10px] font-mono text-slate-400 mt-2">
+                  OVERALL STATUS: <span className={latestMetrics?.total_ms < 1000 ? "text-emerald-400 font-bold" : "text-amber-400 font-bold"}>
+                    {latestMetrics?.total_ms < 1000 ? "FAST" : (latestMetrics?.total_ms < 3000 ? "NORMAL" : "SLOW")}
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'stability' && (
+            <motion.div 
+              key="stability"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="p-4 space-y-4 overflow-y-auto h-full custom-scrollbar"
+            >
+              <div className="bg-slate-900/40 border border-white/5 p-4 rounded-xl space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                  <Activity size={14} className="text-slate-400" />
+                  <span>DAILY USE STABILITY REPORT</span>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                  <div className="bg-slate-950/60 p-2 rounded border border-white/5">
+                    <span className="text-slate-500 block text-[8px] mb-0.5">MEMORY PRESSURE</span>
+                    <span className="text-emerald-400 font-bold">{telemetry?.stability?.memory_pressure || "NORMAL"}</span>
+                  </div>
+                  <div className="bg-slate-950/60 p-2 rounded border border-white/5">
+                    <span className="text-slate-500 block text-[8px] mb-0.5">DISCONNECTS</span>
+                    <span className="text-slate-300 font-bold">0</span>
+                  </div>
+                  <div className="bg-slate-950/60 p-2 rounded border border-white/5">
+                    <span className="text-slate-500 block text-[8px] mb-0.5">FAILED TOOL LAUNCHES</span>
+                    <span className="text-slate-300 font-bold">0</span>
+                  </div>
+                  <div className="bg-slate-950/60 p-2 rounded border border-white/5">
+                    <span className="text-slate-500 block text-[8px] mb-0.5">RETRY COUNTS</span>
+                    <span className="text-slate-300 font-bold">{telemetry?.healing?.heal_attempts || 0}</span>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {activeTab === 'events' && (
             <motion.div 
               key="events"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
               className="h-full overflow-y-auto custom-scrollbar"
             >
-              <div className="p-3 border-b border-white/5 bg-slate-950/20">
-                <div className="relative">
-                  <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                  <input 
-                    type="text"
-                    placeholder="Search logs..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-slate-900/50 border border-white/10 rounded-lg py-1.5 pl-8 pr-3 text-[10px] font-mono focus:outline-none focus:border-blue-500/50 transition-colors"
-                  />
+              {events.length > 0 ? (
+                <div className="flex flex-col">
+                  {events.map((evt, idx) => (
+                    <EventRow key={idx} event={evt} />
+                  ))}
                 </div>
-              </div>
-              {filteredEvents.length > 0 ? (
-                filteredEvents.map(event => <EventRow key={event.id} event={event} />)
               ) : (
-                <div className="flex flex-col items-center justify-center h-full text-slate-600 gap-3 opacity-50">
-                  <Monitor size={32} />
-                  <span className="text-[10px] font-mono uppercase tracking-[0.2em]">Awaiting Data Streams...</span>
+                <div className="h-full flex flex-col items-center justify-center text-slate-500">
+                  <Activity size={24} className="mb-2 opacity-20" />
+                  <span className="text-xs font-mono">No events captured yet</span>
                 </div>
               )}
             </motion.div>
           )}
-
-          {activeTab === 'performance' && (
-            <motion.div 
-              key="perf"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="p-6 space-y-6"
-            >
-              <div className="grid grid-cols-2 gap-4">
-                 <div className="glass-morphism p-4 rounded-xl border border-white/5">
-                    <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">Execution Mode</span>
-                    <span className={`text-sm font-bold font-heading uppercase ${metrics?.execution_mode === 'deterministic' ? 'text-emerald-400' : 'text-blue-400'}`}>
-                        {metrics?.execution_mode || 'standby'}
-                    </span>
-                 </div>
-                 <div className="glass-morphism p-4 rounded-xl border border-white/5">
-                    <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">LLM Bypass</span>
-                    <span className={`text-sm font-bold font-heading uppercase ${metrics?.llm_bypassed ? 'text-emerald-400' : 'text-slate-500'}`}>
-                        {metrics?.llm_bypassed ? 'ACTIVE' : 'INACTIVE'}
-                    </span>
-                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                 <div className="glass-morphism p-4 rounded-xl border border-white/5">
-                    <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">STT Offset</span>
-                    <span className="text-xl font-bold text-white font-heading">{metrics?.stt_ms || 0}<span className="text-xs text-slate-500 ml-1">ms</span></span>
-                 </div>
-                 <div className="glass-morphism p-4 rounded-xl border border-white/5">
-                    <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">Inference</span>
-                    <span className="text-xl font-bold text-white font-heading">{metrics?.generation_ms || 0}<span className="text-xs text-slate-500 ml-1">ms</span></span>
-                 </div>
-              </div>
-
-              <div className="space-y-4 pt-4 border-t border-white/5">
-                 <LatencyBar label="Speech Recognition" value={metrics?.stt_ms || 0} color="bg-emerald-500" />
-                 <LatencyBar label="Knowledge Retrieval" value={metrics?.retrieval_ms || 0} color="bg-purple-500" />
-                 <LatencyBar label="Cognitive Reasoning" value={metrics?.generation_ms || 0} color="bg-blue-500" />
-                 <LatencyBar label="Speech Synthesis" value={metrics?.tts_ms || 0} color="bg-amber-500" />
-                 <div className="pt-2">
-                    <LatencyBar label="End-to-End Latency" value={metrics?.total_ms || 0} max={4000} color="bg-gradient-to-r from-blue-500 to-purple-500" />
-                 </div>
-              </div>
-              
-              <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl flex items-start gap-3">
-                 <AlertCircle size={14} className="text-blue-400 mt-0.5 shrink-0" />
-                 <p className="text-[10px] text-blue-300/80 leading-relaxed">
-                    Performance baseline established using local <b>phi3:mini</b>. Real-time targets set at sub-2.5s total loop duration.
-                 </p>
-              </div>
-            </motion.div>
-          )}
-
-          {activeTab === 'memory' && (
-            <motion.div 
-              key="mem"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="p-6 space-y-6"
-            >
-               <div className="flex items-center gap-4 p-4 glass-morphism rounded-xl border border-white/5">
-                  <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center">
-                    <Database size={20} className="text-blue-400" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold font-heading">Chroma Vector Core</h4>
-                    <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Active: persistence_layer_v1</span>
-                  </div>
-               </div>
-
-               <div className="space-y-4">
-                  <h5 className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.2em] mb-3">Live Retrieval Logs</h5>
-                  {events.filter(e => e.data?.type === 'metrics' && e.data?.data?.retrieval_ms).length > 0 ? (
-                    events.filter(e => e.data?.type === 'metrics' && e.data?.data?.retrieval_ms).slice(0, 5).map(e => (
-                      <div key={e.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-white/5">
-                        <div className="flex items-center gap-3">
-                          <Clock size={12} className="text-slate-500" />
-                          <span className="text-[10px] font-mono text-slate-300">Semantic Query Resolved</span>
-                        </div>
-                        <span className="text-[10px] font-mono text-emerald-400">-{e.data.data.retrieval_ms}ms</span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8 border-2 border-dashed border-slate-800 rounded-2xl">
-                       <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">No active retrievals</p>
-                    </div>
-                  )}
-               </div>
-
-               <div className="pt-6 border-t border-white/5 flex gap-4">
-                  <div className="flex-1 text-center p-3 glass-morphism rounded-xl border border-white/5">
-                    <span className="text-[9px] font-mono text-slate-500 uppercase block mb-1">Dimensions</span>
-                    <span className="text-sm font-bold text-white">384</span>
-                  </div>
-                  <div className="flex-1 text-center p-3 glass-morphism rounded-xl border border-white/5">
-                    <span className="text-[9px] font-mono text-slate-500 uppercase block mb-1">Index Type</span>
-                    <span className="text-sm font-bold text-white uppercase">HNSW</span>
-                  </div>
-               </div>
-            </motion.div>
-          )}
-
-          {activeTab === 'desktop' && (
-            <motion.div 
-              key="desktop"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="p-6 space-y-6 overflow-y-auto h-full custom-scrollbar"
-            >
-               <div className="grid grid-cols-2 gap-4">
-                  <div className="glass-morphism p-4 rounded-xl border border-white/5">
-                     <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">Index Health</span>
-                     <span className="text-sm font-bold text-emerald-400">OPTIMAL</span>
-                  </div>
-                  <div className="glass-morphism p-4 rounded-xl border border-white/5">
-                     <span className="text-[10px] font-mono text-slate-500 uppercase block mb-1">Runtime</span>
-                     <span className="text-sm font-bold text-blue-400">BACKGROUND</span>
-                  </div>
-               </div>
-
-               <div className="space-y-4">
-                  <h5 className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.2em] mb-3">Live Workspace Feed</h5>
-                  {events.filter(e => e.data?.component === 'desktop').length > 0 ? (
-                    events.filter(e => e.data?.component === 'desktop').slice(0, 8).map(e => (
-                      <div key={e.id} className="flex items-center gap-3 p-3 bg-slate-900/30 rounded-lg border border-white/5">
-                        <div className="p-1.5 rounded bg-blue-500/10 text-blue-400">
-                          {e.data.type === 'file_indexed' ? <FileText size={12} /> : <Activity size={12} />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-bold text-slate-300 truncate">{e.data.data.name || e.data.data.action}</p>
-                          <p className="text-[8px] font-mono text-slate-500 truncate">{e.data.data.path}</p>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8 border-2 border-dashed border-slate-800 rounded-2xl">
-                       <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">No Desktop Activity</p>
-                    </div>
-                  )}
-               </div>
-
-               <div className="p-4 bg-purple-500/5 border border-purple-500/20 rounded-xl">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Layout size={12} className="text-purple-400" />
-                    <span className="text-[10px] font-mono text-purple-300 uppercase tracking-widest">Active Context</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 leading-relaxed italic">
-                    Privacy Gate Active: Continuous surveillance disabled. Context is only analyzed on explicit request.
-                  </p>
-               </div>
-            </motion.div>
-          )}
-          {activeTab === 'workflow' && (
-            <motion.div 
-              key="workflow"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="p-6 space-y-6 overflow-y-auto h-full custom-scrollbar"
-            >
-              <div className="space-y-6">
-                <section>
-                    <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
-                        <Briefcase size={12} className="text-blue-500" />
-                        Active Projects
-                    </h3>
-                    <div className="grid grid-cols-1 gap-2">
-                        {metrics?.desktop?.projects?.length > 0 ? (
-                            metrics.desktop.projects.map(p => (
-                                <div key={p} className="p-3 rounded-xl bg-slate-900/50 border border-white/5 flex items-center justify-between">
-                                    <span className="text-xs font-mono text-slate-300">{p}</span>
-                                    <span className="text-[8px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">VS CODE</span>
-                                </div>
-                            ))
-                        ) : (
-                            <div className="text-xs text-slate-600 italic p-3 border border-dashed border-slate-800 rounded-xl text-center">No active projects detected</div>
-                        )}
-                    </div>
-                </section>
-
-                <section>
-                    <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
-                        <Globe size={12} className="text-emerald-500" />
-                        Research Context
-                    </h3>
-                    <div className="p-4 rounded-xl bg-slate-900/50 border border-white/5 space-y-3">
-                        <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                            <span className="text-[10px] text-slate-400 uppercase font-mono">Status</span>
-                            <span className="text-[10px] text-emerald-400 font-bold">READY</span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 leading-relaxed italic">
-                            Browser tab snapshots and article highlights are stored locally in the workflow memory core.
-                        </p>
-                    </div>
-                </section>
-
-                <section>
-                    <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
-                        <Clock size={12} className="text-purple-500" />
-                        Recent Continuity
-                    </h3>
-                    <div className="space-y-2">
-                        {events.filter(e => e.type === 'SYS' && e.data?.action?.startsWith('SAVE_')).slice(0, 3).map(e => (
-                            <div key={e.id} className="p-2 rounded-lg bg-slate-900/20 border border-white/5 flex items-center justify-between text-[10px] font-mono">
-                                <span className="text-slate-400">{e.data.action}</span>
-                                <span className="text-slate-600">{e.timestamp}</span>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-              </div>
-            </motion.div>
-          )}
         </AnimatePresence>
-      </div>
-      
-      {/* Footer Info */}
-      <div className="px-4 py-2 bg-slate-900/60 border-t border-white/5 flex items-center justify-between">
-         <div className="flex items-center gap-4 text-[9px] font-mono text-slate-500">
-            <span className="flex items-center gap-1"><Cpu size={10} /> BUS_CLK: 12.4GHz</span>
-            <span className="flex items-center gap-1 uppercase tracking-widest text-blue-400/60">Node: v2.4.0_Stable</span>
-         </div>
-         <div className="flex items-center gap-1 text-[9px] font-mono text-slate-600">
-            FRIDAY_ENGINE_RUNNING
-         </div>
       </div>
     </div>
   );
 }
+
+export default memo(EngineeringHub);

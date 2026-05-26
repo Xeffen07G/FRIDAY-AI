@@ -1,6 +1,15 @@
-const BACKEND_PORT = "8001";
+const BACKEND_PORT = "8000";
 const BASE_URL = `http://127.0.0.1:${BACKEND_PORT}`;
-const WS_URL = `ws://127.0.0.1:${BACKEND_PORT}`;
+
+// Dynamically generate the websocket URL using window.location.hostname and port 8000
+const getWsUrl = () => {
+  const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) 
+    ? window.location.hostname 
+    : '127.0.0.1';
+  return `ws://${hostname}:${BACKEND_PORT}`;
+};
+
+const WS_URL = getWsUrl();
 
 export const API_CONFIG = {
   BASE_URL,

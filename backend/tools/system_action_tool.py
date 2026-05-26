@@ -32,9 +32,17 @@ class SystemActionTool(BaseTool):
                         "notepad": "notepad"
                     }
                     cmd = app_map.get(target.lower(), target)
-                    subprocess.Popen(["cmd", "/c", f"start {cmd}"], shell=True)
+                    proc = subprocess.Popen(["cmd", "/c", f"start {cmd}"], shell=True)
+                    from core.runtime_state import runtime_state
+                    if not hasattr(runtime_state.tools, "active_subprocesses"):
+                        runtime_state.tools.active_subprocesses = []
+                    runtime_state.tools.active_subprocesses.append(proc.pid)
                 else:
-                    subprocess.Popen(["open", "-a", target])
+                    proc = subprocess.Popen(["open", "-a", target])
+                    from core.runtime_state import runtime_state
+                    if not hasattr(runtime_state.tools, "active_subprocesses"):
+                        runtime_state.tools.active_subprocesses = []
+                    runtime_state.tools.active_subprocesses.append(proc.pid)
                 return f"Successfully triggered opening of {target}."
             except Exception as e:
                 return f"Failed to open {target}: {str(e)}"
@@ -86,9 +94,16 @@ class SystemActionTool(BaseTool):
             # Deterministic workflow: Open Folder + Open Terminal + (Optional) Open VS Code
             try:
                 os.startfile(target)
-                subprocess.Popen(["powershell.exe", "-NoExit", "-Command", f"cd {target}"], shell=True)
+                proc1 = subprocess.Popen(["powershell.exe", "-NoExit", "-Command", f"cd {target}"], shell=True)
                 # Attempt to open VS Code if it's in PATH
-                subprocess.Popen(["code", target], shell=True)
+                proc2 = subprocess.Popen(["code", target], shell=True)
+                
+                from core.runtime_state import runtime_state
+                if not hasattr(runtime_state.tools, "active_subprocesses"):
+                    runtime_state.tools.active_subprocesses = []
+                runtime_state.tools.active_subprocesses.append(proc1.pid)
+                runtime_state.tools.active_subprocesses.append(proc2.pid)
+                
                 return f"Workspace setup complete for {target}. Folder, Terminal, and VS Code launched."
             except Exception as e:
                 return f"Partial success in workspace setup: {str(e)}"

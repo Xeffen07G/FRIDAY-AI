@@ -20,12 +20,12 @@ if (!(Test-Path ".env")) {
 
 # 3. Start Backend
 Write-Host "[3/4] Launching F.R.I.D.A.Y. Core Backend..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; python -m uvicorn main:app --reload --port 8001" -WindowStyle Normal
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; python -m uvicorn main:app --reload --port 8000" -WindowStyle Normal
 
 # 4. Start Frontend
 Write-Host "[4/4] Launching F.R.I.D.A.Y. Interface..." -ForegroundColor Yellow
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd frontend; npm run dev" -WindowStyle Normal
 
 Write-Host "System Boot Sequence Complete." -ForegroundColor Green
-Write-Host "Backend: http://localhost:8001"
+Write-Host "Backend: http://localhost:8000"
 Write-Host "Frontend: http://localhost:5173"

@@ -9,9 +9,12 @@ from voice.voice_orchestrator import voice_orchestrator
 from config.settings import settings
 from core.logger import get_logger
 from core.event_bus import event_bus
+import os
 
 logger = get_logger("ws_voice")
 router = APIRouter()
+
+voice_sessions = {}
 
 class VoiceSession:
     def __init__(self, websocket: WebSocket):
@@ -21,6 +24,8 @@ class VoiceSession:
         self.request_id = ""
         self.audio_buffer = bytearray()
         self.last_partial_transcript = ""
+        self.partial_task = None
+        self.active_process_task = None
 
     async def send_status(self, status: str):
         await self.websocket.send_json({"type": "status", "data": status})
@@ -83,70 +88,83 @@ async def voice_websocket(websocket: WebSocket):
             if data["type"] == "interrupt":
                 logger.info("Barge-in detected: interrupting playback/generation")
                 session.interrupt_event.set()
+                if session.active_process_task and not session.active_process_task.done():
+                    session.active_process_task.cancel()
+                    logger.info("Cancelled active process task on interrupt")
                 continue
 
             if data["type"] == "audio_chunk":
                 try:
                     chunk_bytes = base64.b64decode(data["data"])
-                    session.audio_buffer.extend(chunk_bytes)
+                    if chat_session_id not in voice_sessions:
+                        voice_sessions[chat_session_id] = []
+                    voice_sessions[chat_session_id].append(chunk_bytes)
                 except Exception as e:
                     logger.error(f"Error handling audio_chunk: {e}")
 
             if data["type"] == "audio_final":
-                logger.info(f"Received audio_final (buffer len: {len(session.audio_buffer)})")
+                logger.info(f"Received audio_final")
+                if session.active_process_task and not session.active_process_task.done():
+                    session.active_process_task.cancel()
+                    logger.info("Cancelled previous active voice process task")
+                
                 session.request_id = str(uuid.uuid4())[:8]
                 session.interrupt_event.clear()
                 
-                audio_to_process = bytes(session.audio_buffer)
-                session.audio_buffer.clear()
+                client_metrics = data.get("metrics", {})
                 
-                if len(audio_to_process) > 1000:
-                    asyncio.create_task(process_voice_request(session, audio_to_process, chat_session_id))
+                os.makedirs("temp", exist_ok=True)
+                webm_path = os.path.join("temp", f"{session.request_id}.webm")
+                chunks = voice_sessions.get(chat_session_id, [])
+                with open(webm_path, "ab") as f:
+                    for chunk in chunks:
+                        f.write(chunk)
+                
+                voice_sessions[chat_session_id] = []
+                
+                session.active_process_task = asyncio.create_task(
+                    process_voice_request(session, webm_path, chat_session_id, client_metrics)
+                )
                 continue
 
             if data["type"] == "audio_cancel":
-                session.audio_buffer.clear()
+                if chat_session_id in voice_sessions:
+                    voice_sessions[chat_session_id] = []
                 continue
                 
     except WebSocketDisconnect:
-        session.is_active = False
         event_bus.emit("network", "websocket_disconnected", {"session_id": chat_session_id})
         logger.info(f"[WS_VOICE] Client disconnected: {chat_session_id}")
     except Exception as e:
-        session.is_active = False
         logger.error(f"[WS_VOICE] Runtime Error: {e}")
         event_bus.emit("network", "websocket_error", {"session_id": chat_session_id, "error": str(e)})
+    finally:
+        session.is_active = False
+        session.audio_buffer.clear()
+        event_bus.unsubscribe(event_pusher)
+        try:
+            heartbeat_task.cancel()
+        except Exception:
+            pass
 
-async def process_partial_transcript(session: VoiceSession):
-    """Generates a partial transcript hypothesis for UI feedback."""
-    if not session.audio_buffer or len(session.audio_buffer) < 16000:
-        return
-        
-    try:
-        # Clone buffer to avoid race conditions
-        buffer_copy = bytes(session.audio_buffer)
-        transcript = await asyncio.to_thread(voice_orchestrator.speech_to_text, buffer_copy)
-        
-        if transcript and transcript != session.last_partial_transcript:
-            session.last_partial_transcript = transcript
-            await session.websocket.send_json({
-                "type": "transcript_partial", 
-                "data": transcript 
-            })
-    except Exception as e:
-        logger.debug(f"Partial STT failed (skipping): {e}")
 
-async def process_voice_request(session: VoiceSession, audio_bytes: bytes, chat_session_id: str):
+
+async def process_voice_request(session: VoiceSession, webm_path: str, chat_session_id: str, client_metrics: dict = None):
     try:
         # 1. Transcribe
         await session.send_status("transcribing")
         event_bus.emit("voice", "stt_start", {"request_id": session.request_id})
         stt_start = time.time()
-        transcript = await asyncio.to_thread(voice_orchestrator.speech_to_text, audio_bytes)
+        transcript = await asyncio.to_thread(voice_orchestrator.speech_to_text, webm_path)
         stt_ms = int((time.time() - stt_start) * 1000)
         event_bus.emit("voice", "stt_finish", {"request_id": session.request_id, "transcript": transcript, "stt_ms": stt_ms})
         
-        if not transcript or transcript.startswith("STT Error"):
+        if not transcript:
+            await session.send_status("idle")
+            return
+            
+        if transcript.startswith("STT Error"):
+            await session.websocket.send_json({"type": "error", "data": "Couldn't hear clearly. Tap mic and try again."})
             await session.send_status("idle")
             return
 
@@ -209,10 +227,10 @@ async def process_voice_request(session: VoiceSession, audio_bytes: bytes, chat_
 
     except Exception as e:
         logger.error(f"Voice request processing failed: {e}")
-        await session.websocket.send_json({"type": "error", "data": str(e)})
+        await session.websocket.send_json({"type": "error", "data": "Couldn't hear clearly. Tap mic and try again."})
         await session.send_status("idle")
 
-async def synthesize_and_send(session: VoiceSession, text: str):
+async def synthesize_and_send(session: VoiceSession, text: str, request_id: str = None):
     """Synthesizes text and sends as base64 audio over WebSocket."""
     if session.interrupt_event.is_set(): return
     

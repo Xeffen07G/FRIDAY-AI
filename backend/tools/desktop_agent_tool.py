@@ -9,7 +9,7 @@ class DesktopAgentTool(BaseTool):
     parameters = {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["find_by_content", "summarize_folder", "get_active_context", "schedule_reminder", "semantic_lookup", "summarize_document", "browser_snapshot", "workflow_resume"]},
+            "action": {"type": "string", "enum": ["find_by_content", "summarize_folder", "get_active_context", "schedule_reminder", "semantic_lookup", "summarize_document", "browser_snapshot", "workflow_resume", "click_terminal_input", "click_vscode_sidebar", "open_terminal_panel", "focus_browser_tab", "focus_chat_input", "resume_frontend", "resume_workspace", "fix_occupied_port"]},
             "query": {"type": "string", "description": "Search query or folder/file path"},
             "time": {"type": "string", "description": "Time for reminder (e.g. '2026-05-13 14:00')"},
             "message": {"type": "string", "description": "Reminder message"}
@@ -117,5 +117,42 @@ class DesktopAgentTool(BaseTool):
                 output += f"- Last Dev Session: {last_dev['payload'][:100]}...\n"
             
             return output if (last_research or last_dev) else "No previous sessions found to resume."
+
+        elif action == "click_terminal_input":
+            from backend.desktop.semantic_operator import semantic_operator
+            success, msg = semantic_operator.click_terminal_input()
+            return msg
+        elif action == "click_vscode_sidebar":
+            from backend.desktop.semantic_operator import semantic_operator
+            success, msg = semantic_operator.click_vscode_sidebar()
+            return msg
+        elif action == "open_terminal_panel":
+            from backend.desktop.semantic_operator import semantic_operator
+            success, msg = semantic_operator.open_terminal_panel()
+            return msg
+        elif action == "focus_browser_tab":
+            from backend.desktop.semantic_operator import semantic_operator
+            success, msg = semantic_operator.focus_browser_tab(query or "localhost")
+            return msg
+        elif action == "focus_chat_input":
+            from backend.desktop.semantic_operator import semantic_operator
+            success, msg = semantic_operator.focus_chat_input()
+            return msg
+        elif action == "resume_frontend":
+            from backend.desktop.semantic_operator import semantic_operator
+            success, msg = semantic_operator.resume_frontend()
+            return msg
+        elif action == "resume_workspace":
+            from backend.desktop.semantic_operator import semantic_operator
+            success, msg = semantic_operator.resume_workspace()
+            return msg
+        elif action == "fix_occupied_port":
+            from backend.desktop.semantic_operator import semantic_operator
+            try:
+                port = int(query)
+            except Exception:
+                port = 5173
+            success, msg = semantic_operator.fix_occupied_port(port)
+            return msg
 
         return "Unknown desktop agent action."

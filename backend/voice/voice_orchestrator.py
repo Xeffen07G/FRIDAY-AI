@@ -1,5 +1,7 @@
 import os
 import tempfile
+import time
+import threading
 from config.settings import settings
 from .voice_pipeline import VoicePipeline
 
@@ -7,40 +9,60 @@ class VoiceOrchestrator:
     """Manages STT, TTS and Voice Activity Detection with production settings."""
     
     def __init__(self):
-        self.pipeline = VoicePipeline(model_size="base.en")
+        self.pipeline = VoicePipeline(model_size="tiny.en")
+        self._local = threading.local()
         
-    def speech_to_text(self, audio_bytes: bytes) -> str:
-        """Saves bytes to temp file and transcribes with Whisper base.en."""
-        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False, dir=settings.TEMP_AUDIO_PATH) as tf:
-            tf.write(audio_bytes)
-            temp_path = tf.name
-            
-        wav_path = temp_path + ".wav"
+    def get_recent_metrics(self) -> dict:
+        return getattr(self._local, "metrics", {"decode_ms": 0, "stt_ms": 0})
+        
+    def speech_to_text(self, webm_path: str) -> str:
+        """Transcribes the provided webm file with Whisper tiny.en."""
+        wav_path = webm_path + ".wav"
+        decode_ms = 0
         try:
             import subprocess
+            t_decode_start = time.time()
+            
+            print("INPUT:", webm_path)
+            print("EXISTS:", os.path.exists(webm_path))
+            if os.path.exists(webm_path):
+                print("SIZE:", os.path.getsize(webm_path))
+
             try:
-                subprocess.run(["ffmpeg", "-y", "-i", temp_path, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav_path], 
+                subprocess.run(["ffmpeg", "-y", "-i", webm_path, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav_path], 
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
                 process_path = wav_path
+                decode_ms = int((time.time() - t_decode_start) * 1000)
                 
-                # Payload validation
+                print("WAV EXISTS:", os.path.exists(wav_path))
+                
+                if os.path.exists(webm_path):
+                    webm_size = os.path.getsize(webm_path)
+                    print(f"WEBM SIZE: {webm_size}")
+                else:
+                    webm_size = 0
+                    
                 if os.path.exists(wav_path):
-                    size = os.path.getsize(wav_path)
-                    # 16000Hz * 2 bytes/sample * 1 channel = 32000 bytes/sec
-                    duration_sec = max(0, (size - 44) / 32000)
-                    import logging
-                    logging.getLogger("voice_orchestrator").info(f"Decoded payload duration: {duration_sec:.2f}s ({size} bytes)")
-                    if duration_sec < 0.2:
-                        return "" # Drop extreme noise payloads
+                    wav_size = os.path.getsize(wav_path)
+                    print(f"WAV SIZE: {wav_size}")
+                else:
+                    wav_size = 0
+                    
+                if webm_size < 4000 or wav_size < 10000:
+                    return "STT Error: Couldn't hear clearly. Tap mic and try again."
                         
-            except (subprocess.SubprocessError, FileNotFoundError):
-                process_path = temp_path
+            except subprocess.SubprocessError:
+                return "STT Error: Invalid data found when processing input"
                 
+            t_stt_start = time.time()
             text = self.pipeline.speech_to_text(process_path)
+            stt_ms = int((time.time() - t_stt_start) * 1000)
+            
+            self._local.metrics = {"decode_ms": decode_ms, "stt_ms": stt_ms}
             return text
         finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            if os.path.exists(webm_path):
+                os.remove(webm_path)
             if os.path.exists(wav_path):
                 os.remove(wav_path)
 
@@ -60,3 +82,4 @@ class VoiceOrchestrator:
                 os.remove(output_path)
 
 voice_orchestrator = VoiceOrchestrator()
+

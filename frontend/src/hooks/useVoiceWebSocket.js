@@ -3,13 +3,14 @@ import { API_CONFIG } from '../config/api';
 
 const WS_URL = API_CONFIG.ENDPOINTS.WS_VOICE;
 
-export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
+export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics, onDisconnect) {
   const [convState, setConvState] = useState('idle');
   const [isRecording, setIsRecording] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [micEnergy, setMicEnergy] = useState(0);
   const [partialTranscript, setPartialTranscript] = useState('');
   const [events, setEvents] = useState([]);
+  const [voiceError, setVoiceError] = useState(null);
 
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -19,12 +20,19 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
   const interruptEventRef = useRef(false);
 
   const addEvent = useCallback((type, data) => {
-    setEvents(prev => [{
-      id: Date.now() + Math.random(),
-      timestamp: new Date().toLocaleTimeString(),
-      type,
-      data
-    }, ...prev].slice(0, 50));
+    setEvents(prev => {
+      if (prev.length > 0) {
+        const last = prev[0];
+        const isDuplicate = last.type === type && JSON.stringify(last.data) === JSON.stringify(data);
+        if (isDuplicate) return prev;
+      }
+      return [{
+        id: Date.now() + Math.random(),
+        timestamp: new Date().toLocaleTimeString(),
+        type,
+        data
+      }, ...prev].slice(0, 50);
+    });
   }, []);
 
   const sendMsg = useCallback((type, payload = {}) => {
@@ -88,17 +96,37 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
   }, [sendMsg, addEvent]);
 
   // Initialize WebSocket with Reconnection
+  // WS_RECONNECT_MAX: Stop trying after 5 consecutive failures
+  // Backoff: 1s → 2s → 4s → 8s → 16s
   useEffect(() => {
+    if (wsRef.current) return; // One websocket only
+    
     let reconnectTimeout = null;
     let isUnmounted = false;
+    let reconnectAttempt = 0;
+    const WS_RECONNECT_MAX = 5;
+    const BACKOFF_SCHEDULE = [1000, 2000, 4000, 8000, 16000];
 
     const connectWebSocket = () => {
       if (isUnmounted) return;
+      if (reconnectAttempt >= WS_RECONNECT_MAX) {
+        console.warn(`[WS_DIAG] Max reconnect attempts (${WS_RECONNECT_MAX}) reached. Stopping.`);
+        setIsConnected(false);
+        addEvent('ERR', { status: 'max_reconnect_reached' });
+        return;
+      }
+      
+      // Enforce single connection — close any stale socket first
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+        wsRef.current = null;
+      }
       
       const url = new URL(WS_URL);
       if (sessionId) url.searchParams.set("session_id", sessionId);
       
-      console.log(`[WS_DIAG] Attempting connection to: ${url.toString()}`);
+      console.log(`[WS_DIAG] Attempting connection to: ${url.toString()} (attempt ${reconnectAttempt + 1}/${WS_RECONNECT_MAX})`);
       
       const ws = new WebSocket(url.toString());
 
@@ -107,11 +135,13 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
         if (isUnmounted) { ws.close(); return; }
         setIsConnected(true);
         wsRef.current = ws;
+        reconnectAttempt = 0; // Reset on successful handshake
         addEvent('SYS', { status: 'connected', session_id: sessionId });
       };
 
       ws.onmessage = (event) => {
         if (isUnmounted) return;
+        console.log("WS MESSAGE", event.data);
         const msg = JSON.parse(event.data);
         
         if (msg.type !== 'ping' && msg.type !== 'token') {
@@ -144,7 +174,13 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
           case 'error':
             console.error("WS Voice Error:", msg.data);
             setConvState('idle');
+            setVoiceError(msg.data);
             addEvent('ERR', msg.data);
+            if (msg.data.includes("Couldn't hear clearly")) {
+                setTimeout(() => {
+                    if (!isUnmounted) window.dispatchEvent(new CustomEvent('friday_ptt', { detail: { state: 'pressed' } }));
+                }, 1500);
+            }
             break;
           default: break;
         }
@@ -157,7 +193,15 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
         setConvState('idle');
         wsRef.current = null;
         addEvent('SYS', { status: 'disconnected' });
-        reconnectTimeout = setTimeout(connectWebSocket, 3000);
+        
+        if (onDisconnect) {
+          onDisconnect();
+        }
+        
+        const delay = BACKOFF_SCHEDULE[Math.min(reconnectAttempt, BACKOFF_SCHEDULE.length - 1)];
+        reconnectAttempt++;
+        console.log(`[WS_DIAG] Reconnecting in ${delay}ms (attempt ${reconnectAttempt}/${WS_RECONNECT_MAX})`);
+        reconnectTimeout = setTimeout(connectWebSocket, delay);
       };
 
       ws.onerror = (err) => {
@@ -172,21 +216,32 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
     return () => {
       isUnmounted = true;
       clearTimeout(reconnectTimeout);
+      console.log("WS CLOSED");
       if (wsRef.current) {
         wsRef.current.onclose = null;
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
-  }, [sessionId, onTranscript, onToken, onMetrics, addEvent, sendMsg, playNextInQueue]);
+  }, []);
 
   const startRecording = useCallback(async () => {
     try {
+      setVoiceError(null);
       interrupt();
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
+        audio: { 
+          channelCount: 1,
+          echoCancellation: true, 
+          noiseSuppression: true, 
+          autoGainControl: true 
+        } 
       });
       
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+      const recorder = new MediaRecorder(stream, { 
+        mimeType: "audio/webm;codecs=opus",
+        audioBitsPerSecond: 64000
+      });
       mediaRecorderRef.current = recorder;
       const audioChunks = [];
       const recordingStartTime = Date.now();
@@ -228,7 +283,7 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
            if (!hasSpoken && volume > speechThreshold) { hasSpoken = true; }
            if (hasSpoken) {
                if (volume < silenceThreshold) {
-                   if (!silenceTimer) silenceTimer = setTimeout(stopInternal, 600);
+                   if (!silenceTimer) silenceTimer = setTimeout(stopInternal, 700);
                } else {
                    clearTimeout(silenceTimer);
                    silenceTimer = null;
@@ -279,7 +334,7 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
         setIsRecording(false);
       };
 
-      recorder.start(500);
+      recorder.start(250);
       setIsRecording(true);
       setConvState('listening');
       addEvent('UI', { action: 'start_recording' });
@@ -298,5 +353,13 @@ export function useVoiceWebSocket(sessionId, onTranscript, onToken, onMetrics) {
     }
   }, [addEvent]);
 
-  return { convState, isConnected, isRecording, micEnergy, partialTranscript, startRecording, stopRecording, interrupt, events };
+  useEffect(() => {
+    if (!voiceError) return;
+    const t = setTimeout(() => {
+      if (!isUnmountedRef.current) setVoiceError(null);
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [voiceError]);
+
+  return { convState, isConnected, isRecording, micEnergy, partialTranscript, voiceError, startRecording, stopRecording, interrupt, events };
 }

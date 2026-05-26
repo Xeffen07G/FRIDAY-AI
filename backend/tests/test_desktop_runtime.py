@@ -9,7 +9,9 @@ from backend.memory.database import get_connection
 @pytest.mark.asyncio
 async def test_file_indexing_and_search():
     """Validates filesystem indexing stability and search correctness."""
-    test_file = os.path.abspath("workspace/test_index.txt")
+    test_dir = os.path.abspath("workspace")
+    os.makedirs(test_dir, exist_ok=True)
+    test_file = os.path.join(test_dir, "test_index.txt")
     with open(test_file, "w") as f:
         f.write("This is a test document for FRIDAY file intelligence.")
     
@@ -53,7 +55,8 @@ async def test_context_retrieval():
 @pytest.mark.asyncio
 async def test_background_task_persistence():
     """Validates task queue recovery."""
-    task_id = "test_task_123"
+    import time
+    task_id = f"test_task_{int(time.time())}"
     conn = get_connection()
     try:
         cursor = conn.cursor()

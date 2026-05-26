@@ -1,0 +1,8 @@
+{
+    "version": "2.4.0",
+    "autonomy_level": 4,
+    "idle_cooldown_seconds": 300,
+    "local_only": true,
+    "default_model": "phi3:mini",
+    "backup_interval_days": 1
+}

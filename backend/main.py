@@ -18,6 +18,8 @@ from core.logger import setup_logging
 from core.validator import validator
 from core.task_manager import background_agent
 from core.event_bus import event_bus
+from core.context_engine import context_engine
+from core.background_task_manager import background_task_manager
 from tools.tool_scheduler import tool_scheduler
 from desktop.tray_manager import tray_manager
 from desktop.hotkey_manager import hotkey_manager
@@ -32,9 +34,19 @@ async def lifespan(app: FastAPI):
     valid = await validator.validate_all()
     if not valid:
         logger.critical("Startup validation FAILED. System may be unstable.")
+        
+    try:
+        from memory.vector_store import migrate_memories
+        migrate_memories()
+    except Exception as me:
+        logger.error(f"Failed to run startup memory migration: {me}")
     
     # Start Runtimes
     await event_bus.start()
+    await context_engine.start()
+    await background_task_manager.start()
+    from core.cognition_loop import cognition_loop
+    await cognition_loop.start()
     await tool_scheduler.start()
     await background_agent.start()
     
@@ -42,10 +54,38 @@ async def lifespan(app: FastAPI):
     tray_manager.start()
     hotkey_manager.start()
     
+    logger.info("[WS_SERVER] Voice websocket mounted at /api/ws/voice")
     yield
     # Shutdown
+    logger.info("Executing unified cancellation path for active sessions on shutdown...")
+    from orchestrator.orchestrator import friday_orchestrator
+    try:
+        from core.runtime_state import runtime_state
+        for session_id in list(runtime_state.conversations.keys()):
+            await friday_orchestrator.cancel_generation(session_id)
+    except Exception as se:
+        logger.error(f"Error during unified cancel on backend shutdown: {se}")
+
+    try:
+        from memory.database import get_connection
+        from datetime import datetime
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE generations SET state = 'CANCELLED', updated_at = ? WHERE state IN ('CREATED', 'ACCEPTED', 'STREAMING')",
+            (datetime.now().isoformat(),)
+        )
+        conn.commit()
+        conn.close()
+        logger.info("All active generations marked as CANCELLED in DB on shutdown.")
+    except Exception as dbe:
+        logger.error(f"Error updating active generations to CANCELLED in DB on shutdown: {dbe}")
+
     await background_agent.stop()
     await tool_scheduler.stop()
+    await cognition_loop.stop()
+    await background_task_manager.stop()
+    await context_engine.stop()
     await event_bus.stop()
     logger.info("F.R.I.D.A.Y. Core shutting down.")
 

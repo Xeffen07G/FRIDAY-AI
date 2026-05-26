@@ -41,6 +41,13 @@ class ToolRegistry:
 
         tool = self.tools[name]
         
+        # CRITICAL REQUIREMENT: Validate execution safety (Task 3)
+        from core.execution_guard import execution_guard
+        is_safe, error_msg = execution_guard.validate(name, kwargs)
+        if not is_safe:
+            logger.warning(f"ExecutionGuard BLOCKED tool execution: {name} | Reason: {error_msg}")
+            return json.dumps({"error": f"Security Violation: {error_msg}"})
+        
         # Phase 7: Safety & Control - Permission Check
         if getattr(tool, "requires_confirmation", False):
             return json.dumps({
