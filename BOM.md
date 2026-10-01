@@ -12,15 +12,12 @@
 
 | Part | What it's for | Qty | Unit | Total | Vendor |
 | --- | --- | --- | --- | --- | --- |
-| [MAX98357AETE+T](https://www.lcsc.com/product-detail/C910544.html) | I2S class-D amp that drives the speaker | 1 | $1.41 | $1.41 | [LCSC](https://www.lcsc.com/product-detail/C910544.html) |
-| [MSM261S4030H0R](https://www.lcsc.com/product-detail/C2840615.html) | I2S MEMS microphone for voice input | 1 | $0.60 | $0.60 | [LCSC](https://www.lcsc.com/product-detail/C2840615.html) |
-| [28mm 4Ω 2W speaker](https://www.lcsc.com/search?q=28mm+speaker+4ohm) | Voice output | 1 | $1.00 | $1.00 | [LCSC](https://www.lcsc.com/search?q=28mm+speaker+4ohm) |
 | [AP2112K-3.3 LDO regulator](https://www.lcsc.com/search?q=AP2112K-3.3) | Steps 5V USB down to 3.3V for the ESP32 | 1 | $0.30 | $0.30 | [LCSC](https://www.lcsc.com/search?q=AP2112K-3.3) |
 | [USB-C connector (16-pin)](https://www.lcsc.com/search?q=USB-C+16pin+SMD) | Power and programming through the S3's native USB | 1 | $0.30 | $0.30 | [LCSC](https://www.lcsc.com/search?q=USB-C+16pin+SMD) |
 | [Tactile buttons (BOOT and RESET)](https://www.lcsc.com/search?q=tactile+switch+smd) | Flashing and resetting the chip | 2 | $0.10 | $0.20 | [LCSC](https://www.lcsc.com/search?q=tactile+switch+smd) |
 | [Passives lump (resistors, caps, 5.1k CC resistors, 10k pull-ups, 10µF/0.1µF decoupling)](https://www.lcsc.com/search?q=0603+resistor+capacitor+kit) | Support circuitry for USB, power and ESP32 boot | 1 | $1.00 | $1.00 | [LCSC](https://www.lcsc.com/search?q=0603+resistor+capacitor+kit) |
-| **Parts subtotal** | — | — | — | **$4.81** | — |
+| **Parts subtotal** | — | — | — | **$1.80** | — |
 | **Tax & shipping** | — | — | — | **$0.00** | — |
-| **Total** | — | — | — | **$4.81** | — |
+| **Total** | — | — | — | **$1.80** | — |
 
-$25.19 left of the tier's funding.
+$28.20 left of the tier's funding.
