@@ -13,9 +13,8 @@
 | Part | What it's for | Qty | Unit | Total | Vendor |
 | --- | --- | --- | --- | --- | --- |
 | [ESP32-S3-WROOM-1-N8R8](https://lcsc.com/product-detail/image/ESP32-S3-WROOM-1-N8R8_C2913201.html) | Main brain: 8MB PSRAM for eye animation, wake-word and audio streaming over Wi-Fi | 1 | $4.93 | $4.93 | [LCSC](https://lcsc.com/product-detail/image/ESP32-S3-WROOM-1-N8R8_C2913201.html) |
-| [INMP441 I2S MEMS microphone](https://shillehtek.com/products/inmp441-i2s-omnidirectional-microphone-module-with-soldering) | Hears the wake word and voice commands | 1 | $2.00 | $2.00 | [ShillehTek](https://shillehtek.com/products/inmp441-i2s-omnidirectional-microphone-module-with-soldering) |
-| **Parts subtotal** | — | — | — | **$6.93** | — |
+| **Parts subtotal** | — | — | — | **$4.93** | — |
 | **Tax & shipping** | — | — | — | **$0.00** | — |
-| **Total** | — | — | — | **$6.93** | — |
+| **Total** | — | — | — | **$4.93** | — |
 
-$23.07 left of the tier's funding.
+$25.07 left of the tier's funding.
