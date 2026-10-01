@@ -12,7 +12,6 @@
 
 | Part | What it's for | Qty | Unit | Total | Vendor |
 | --- | --- | --- | --- | --- | --- |
-| [ESP32-S3-WROOM-1-N8R8](https://lcsc.com/product-detail/image/ESP32-S3-WROOM-1-N8R8_C2913201.html) | Main brain: 8MB PSRAM for eye animation, wake-word and audio streaming over Wi-Fi | 1 | $4.93 | $4.93 | [LCSC](https://lcsc.com/product-detail/image/ESP32-S3-WROOM-1-N8R8_C2913201.html) |
 | [MAX98357AETE+T](https://www.lcsc.com/product-detail/C910544.html) | I2S class-D amp that drives the speaker | 1 | $1.41 | $1.41 | [LCSC](https://www.lcsc.com/product-detail/C910544.html) |
 | [MSM261S4030H0R](https://www.lcsc.com/product-detail/C2840615.html) | I2S MEMS microphone for voice input | 1 | $0.60 | $0.60 | [LCSC](https://www.lcsc.com/product-detail/C2840615.html) |
 | [28mm 4Ω 2W speaker](https://www.lcsc.com/search?q=28mm+speaker+4ohm) | Voice output | 1 | $1.00 | $1.00 | [LCSC](https://www.lcsc.com/search?q=28mm+speaker+4ohm) |
@@ -20,8 +19,8 @@
 | [USB-C connector (16-pin)](https://www.lcsc.com/search?q=USB-C+16pin+SMD) | Power and programming through the S3's native USB | 1 | $0.30 | $0.30 | [LCSC](https://www.lcsc.com/search?q=USB-C+16pin+SMD) |
 | [Tactile buttons (BOOT and RESET)](https://www.lcsc.com/search?q=tactile+switch+smd) | Flashing and resetting the chip | 2 | $0.10 | $0.20 | [LCSC](https://www.lcsc.com/search?q=tactile+switch+smd) |
 | [Passives lump (resistors, caps, 5.1k CC resistors, 10k pull-ups, 10µF/0.1µF decoupling)](https://www.lcsc.com/search?q=0603+resistor+capacitor+kit) | Support circuitry for USB, power and ESP32 boot | 1 | $1.00 | $1.00 | [LCSC](https://www.lcsc.com/search?q=0603+resistor+capacitor+kit) |
-| **Parts subtotal** | — | — | — | **$9.74** | — |
+| **Parts subtotal** | — | — | — | **$4.81** | — |
 | **Tax & shipping** | — | — | — | **$0.00** | — |
-| **Total** | — | — | — | **$9.74** | — |
+| **Total** | — | — | — | **$4.81** | — |
 
-$20.26 left of the tier's funding.
+$25.19 left of the tier's funding.
