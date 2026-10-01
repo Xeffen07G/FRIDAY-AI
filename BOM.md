@@ -18,7 +18,7 @@
 | [Adafruit MAX98357A I2S amp breakout](https://adafruit.com/product/3006) | Drives the speaker | 1 | $5.95 | $5.95 | [Adafruit](https://adafruit.com/product/3006) |
 | [Mini metal speaker 8Ω 0.5W](https://www.adafruit.com/products/1890) | Voice output | 1 | $1.95 | $1.95 | [Adafruit](https://www.adafruit.com/products/1890) |
 | **Parts subtotal** | — | — | — | **$27.15** | — |
-| **Tax & shipping** | — | — | — | **$0.00** | — |
-| **Total** | — | — | — | **$27.15** | — |
+| **Tax & shipping** | — | — | — | **$2.85** | — |
+| **Total** | — | — | — | **$30.00** | — |
 
-$2.85 left of the tier's funding.
+$0.00 left of the tier's funding.
